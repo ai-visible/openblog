@@ -1,0 +1,125 @@
+================================================================================
+DEEP QUALITY AUDIT - MANUAL INSPECTION
+================================================================================
+
+1. HEADLINE & META
+--------------------------------------------------------------------------------
+Headline: AI Adoption in Customer Service: 2025 Strategic Guide & Statistics
+Length: 66 chars
+
+Meta Title: AI Adoption in Customer Service: 2025 Stats & Strategy | Example Corp
+Length: 69 chars ⚠️ EXCEEDS 60
+
+Meta Description: Cut support costs by 30% with AI adoption in customer service. Discover key 2025 statistics, implementation strategies, and productivity hacks. Read more.
+Length: 154 chars ✅
+
+2. DIRECT ANSWER
+--------------------------------------------------------------------------------
+Direct Answer: AI adoption in customer service involves integrating machine learning and generative AI to automate support tasks. By 2025, AI will manage 95% of customer interactions, reducing operational costs by r...
+Word count: 44 ✅
+✅ Contains primary keyword
+✅ Contains citation [1]
+
+3. INTRO SECTION
+--------------------------------------------------------------------------------
+Intro word count: 91
+Preview: Customer expectations are skyrocketing, yet budgets remain tight. Leaders face a critical choice: evolve or fall behind. AI adoption in customer service is no longer optional; it is a survival mechanism for modern enterprises. By 2025, Gartner predicts that 80% of customer service organizations will...
+Paragraphs: 0
+
+4. SECTIONS
+--------------------------------------------------------------------------------
+Section 1: Why AI Adoption is Accelerating in 2025
+  Words: 132
+  Paragraphs: 5
+  Avg para length: 23.0 words
+  Max para length: 31 words ✅
+Section 2: How AI Reduces Operational Costs by 30%
+  Words: 142
+  Paragraphs: 5
+  Avg para length: 23.4 words
+  Max para length: 26 words ✅
+Section 3: Boosting Agent Productivity by 14%
+  Words: 146
+  Paragraphs: 5
+  Avg para length: 24.8 words
+  Max para length: 27 words ✅
+Section 4: Improving CSAT and Resolution Rates
+  Words: 136
+  Paragraphs: 5
+  Avg para length: 22.6 words
+  Max para length: 25 words ✅
+Section 5: Strategic Implementation Steps
+  Words: 175
+  Paragraphs: 6
+  Avg para length: 19.0 words
+  Max para length: 27 words ✅
+Section 6: Future Trends in AI Support
+  Words: 132
+  Paragraphs: 6
+  Avg para length: 18.5 words
+  Max para length: 29 words ✅
+
+Total sections: 6
+Total words: 863
+
+5. PARAGRAPH LENGTH ANALYSIS
+--------------------------------------------------------------------------------
+Total paragraphs: 32
+Average length: 21.7 words
+Max length: 31 words
+Paragraphs >50 words: 0 (0.0%)
+Paragraphs >100 words: 0 (0.0%)
+
+6. CITATIONS
+--------------------------------------------------------------------------------
+Citation references found: 26
+Unique citation numbers: [1, 2, 3, 5, 6, 9, 10, 11, 13]
+Sources listed: 13
+Source numbers: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+✅ All citations have matching sources
+
+Citation distribution:
+  Paragraphs with citations: 22/35 (62.9%)
+  Paragraphs with 2+ citations: 0/35 (0.0%)
+  Target: 60%+ paragraphs with 2+ citations
+
+7. FAQ/PAA
+--------------------------------------------------------------------------------
+FAQ items: 5
+  FAQ 1: How much can AI reduce customer service costs?...
+  FAQ 2: What is the success rate of AI chatbots?...
+  FAQ 3: How does AI improve agent productivity?...
+PAA items: 4
+  PAA 1: What is the impact of AI on customer service?...
+  PAA 2: How many companies are using AI for customer service?...
+  PAA 3: Will AI replace customer service agents?...
+
+8. NATURAL LANGUAGE PATTERNS
+--------------------------------------------------------------------------------
+Conversational phrases: 0
+Question patterns: 0
+Direct statements: 4
+
+9. STRUCTURED DATA
+--------------------------------------------------------------------------------
+Lists (ul/ol): 1
+H2 headings: 0
+H3 headings: 0
+
+10. AEO SCORE BREAKDOWN (MANUAL CALCULATION)
+--------------------------------------------------------------------------------
+Based on AEOScorer logic:
+
+1. Direct Answer: 25.0/25
+2. Q&A Format: 15.0/20 (FAQ: 5, PAA: 4, Question headers: 0)
+3. Citation Clarity: 10.0/15
+4. Natural Language: 5.0/15
+5. Structured Data: 2.5/10
+6. E-E-A-T: 0.0/15 (no input_data provided)
+
+TOTAL AEO SCORE: 57.5/100
+Reported AEO Score: 59.0/100
+
+================================================================================
+AUDIT COMPLETE
+================================================================================
