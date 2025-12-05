@@ -370,7 +370,7 @@ class ImageGenerator:
         headers = {
             "Authorization": f"Bearer {self.openrouter_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/SCAILE-it/openblog",
+            "HTTP-Referer": "https://github.com/federicodeponte/openblog",
             "X-Title": "OpenBlog",
         }
         

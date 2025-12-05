@@ -34,7 +34,7 @@ Stage 11: HTML Generation & Storage
 ### Installation
 
 ```bash
-git clone https://github.com/SCAILE-it/openblog.git
+git clone https://github.com/federicodeponte/openblog.git
 cd openblog
 pip install -r requirements.txt
 ```
