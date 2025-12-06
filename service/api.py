@@ -1453,12 +1453,19 @@ async def generate_image(request: ImageGenerationRequestModel):
 # =============================================================================
 
 class GraphicsGenerationRequestModel(BaseModel):
-    """Request for graphics generation."""
+    """Request for graphics generation (legacy API)."""
     graphic_type: str = Field(..., description="Type: headline, quote, metric, cta, infographic")
     content: Dict[str, Any] = Field(..., description="Type-specific content")
     company_data: Optional[Dict[str, Any]] = Field(None, description="Company context")
     project_folder_id: Optional[str] = Field(None, description="Project Drive folder ID")
     dimensions: Optional[List[int]] = Field([1920, 1080], description="Image dimensions [width, height] - default horizontal format")
+
+
+class GraphicsConfigRequestModel(BaseModel):
+    """Request for JSON config-based graphics generation (new component system)."""
+    config: Dict[str, Any] = Field(..., description="JSON config with theme and components")
+    project_folder_id: Optional[str] = Field(None, description="Project Drive folder ID")
+    dimensions: Optional[List[int]] = Field([1920, 1080], description="Image dimensions [width, height]")
 
 
 class GraphicsGenerationResponseModel(BaseModel):

@@ -24,6 +24,8 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload
 
+from .graphics_components import GraphicsBuilder, Theme, ComponentRenderer
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,9 +69,12 @@ class GraphicsGenerator:
     # Domain-wide delegation subject
     DELEGATION_SUBJECT = os.getenv("GOOGLE_DELEGATION_SUBJECT", "")
     
-    def __init__(self):
+    def __init__(self, theme: Optional[Theme] = None):
         # Initialize Google Drive service
         self.drive_service = self._init_drive_service()
+        
+        # Initialize component builder with theme
+        self.builder = GraphicsBuilder(theme=theme)
         
         # Check for Playwright
         try:
@@ -187,7 +192,20 @@ class GraphicsGenerator:
             )
     
     def _generate_html(self, request: GraphicsGenerationRequest) -> str:
-        """Generate HTML content based on graphic type."""
+        """
+        Generate HTML content based on graphic type.
+        
+        Supports two modes:
+        1. Legacy mode: Uses graphic_type to select template
+        2. JSON config mode: If content contains 'config' key, uses component builder
+        """
+        # Check if using JSON config mode
+        if isinstance(request.content, dict) and "config" in request.content:
+            config = request.content["config"]
+            # Build from JSON config using component system
+            return self.builder.build_from_config(config, request.dimensions)
+        
+        # Legacy mode: use template-based generation
         if request.graphic_type == "headline":
             return self._generate_headline_html(request)
         elif request.graphic_type == "quote":
@@ -200,6 +218,74 @@ class GraphicsGenerator:
             return self._generate_infographic_html(request)
         else:
             raise ValueError(f"Unknown graphic type: {request.graphic_type}")
+    
+    async def generate_from_config(
+        self,
+        config: Dict[str, Any],
+        dimensions: tuple = (1920, 1080),
+        project_folder_id: Optional[str] = None,
+    ) -> GraphicsGenerationResponse:
+        """
+        Generate graphics from JSON config (new component-based API).
+        
+        Args:
+            config: JSON config dict with theme and components
+            dimensions: Image dimensions (width, height)
+            project_folder_id: Optional Drive folder ID for upload
+        
+        Example config:
+        {
+          "theme": {
+            "accent": "#ff6b6b",
+            "background": "#ffffff"
+          },
+          "components": [
+            {"type": "badge", "content": {"text": "Case Study", "icon": "case-study"}},
+            {"type": "headline", "content": {"text": "Amazing Results", "size": "large"}},
+            {"type": "logo_card", "content": {"client_name": "Client Co", "provider_name": "SCAILE"}}
+          ]
+        }
+        """
+        # Build HTML from config
+        html_content = self.builder.build_from_config(config, dimensions)
+        
+        # Convert to PNG
+        if not self._playwright_available:
+            raise ValueError("Playwright not available")
+        
+        image_bytes = await self._html_to_png(html_content, dimensions)
+        
+        # Upload or return base64
+        drive_file_id = None
+        image_url = ""
+        
+        if project_folder_id and self.drive_service:
+            try:
+                target_folder_id = await self._get_graphics_folder(project_folder_id)
+                if not target_folder_id:
+                    target_folder_id = project_folder_id
+                
+                file_name = f"graphic_config_{int(time.time())}.png"
+                drive_file_id = await self._upload_to_drive(image_bytes, file_name, target_folder_id)
+                
+                if drive_file_id:
+                    await self._make_public(drive_file_id)
+                    image_url = f"https://drive.google.com/uc?export=view&id={drive_file_id}"
+            except Exception as drive_error:
+                logger.warning(f"Drive upload failed: {drive_error}, returning base64")
+                image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+                image_url = f"data:image/png;base64,{image_b64}"
+        else:
+            image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+            image_url = f"data:image/png;base64,{image_b64}"
+        
+        return GraphicsGenerationResponse(
+            success=True,
+            image_url=image_url,
+            alt_text="Custom graphic",
+            drive_file_id=drive_file_id or "",
+            generation_time_seconds=0.0,
+        )
     
     def _generate_headline_html(self, request: GraphicsGenerationRequest) -> str:
         """Generate headline graphic HTML (case study style - openfigma quality)."""
