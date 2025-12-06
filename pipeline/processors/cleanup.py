@@ -8,6 +8,8 @@ Maps to v4.1 Phase 9, Steps 29-31:
 
 Handles:
 - HTML cleaning and normalization
+- XSS sanitization (bleach)
+- HTML validation (BeautifulSoup)
 - Markdown removal
 - Broken link fixing
 - Invisible character removal
@@ -19,6 +21,21 @@ import logging
 from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger(__name__)
+
+# Try to import sanitization libraries (optional dependencies)
+try:
+    import bleach
+    BLEACH_AVAILABLE = True
+except ImportError:
+    logger.warning("bleach not installed - XSS sanitization disabled")
+    BLEACH_AVAILABLE = False
+
+try:
+    from bs4 import BeautifulSoup
+    BS4_AVAILABLE = True
+except ImportError:
+    logger.warning("beautifulsoup4 not installed - HTML validation disabled")
+    BS4_AVAILABLE = False
 
 
 class HTMLCleaner:
@@ -106,6 +123,12 @@ class HTMLCleaner:
     def sanitize(html: str) -> str:
         """
         Sanitize HTML content (Step 30: output_sanitizer).
+        
+        Now includes:
+        - XSS protection (bleach)
+        - HTML validation (BeautifulSoup)
+        - Entity encoding
+        - Markdown cleanup
 
         Args:
             html: HTML to sanitize
@@ -116,17 +139,25 @@ class HTMLCleaner:
         if not html or not isinstance(html, str):
             return ""
 
-        # Remove remaining markdown bold
+        # 1. XSS sanitization with bleach (if available)
+        if BLEACH_AVAILABLE:
+            html = HTMLCleaner._sanitize_xss(html)
+
+        # 2. HTML validation with BeautifulSoup (if available)
+        if BS4_AVAILABLE:
+            html = HTMLCleaner._validate_html(html)
+
+        # 3. Remove remaining markdown bold
         html = re.sub(r"\*\*(.+?)\*\*", r"\1", html)
 
-        # Clean bracketed content (keep citations [1], remove notes)
+        # 4. Clean bracketed content (keep citations [1], remove notes)
         html = HTMLCleaner._clean_brackets(html)
 
-        # Fix broken href
+        # 5. Fix broken href
         html = re.sub(r'href="\s*"', "", html)
         html = re.sub(r"href='\\s*'", "", html)
 
-        # Remove invisible characters (zero-width spaces, etc)
+        # 6. Remove invisible characters (zero-width spaces, etc)
         zero_width_chars = [
             "\u200b",  # Zero-width space
             "\u200c",  # Zero-width non-joiner
@@ -140,6 +171,89 @@ class HTMLCleaner:
             html = html.replace(char, "")
 
         return html.strip()
+    
+    @staticmethod
+    def _sanitize_xss(html: str) -> str:
+        """
+        Sanitize HTML to prevent XSS attacks using bleach.
+        
+        Args:
+            html: HTML to sanitize
+            
+        Returns:
+            XSS-safe HTML
+        """
+        if not BLEACH_AVAILABLE:
+            logger.warning("bleach not available - skipping XSS sanitization")
+            return html
+        
+        # Allowed tags for blog content
+        allowed_tags = [
+            'p', 'br', 'strong', 'em', 'u', 'b', 'i',
+            'a', 'ul', 'ol', 'li',
+            'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+            'blockquote', 'code', 'pre',
+            'table', 'thead', 'tbody', 'tr', 'th', 'td',
+            'cite',  # For citations
+        ]
+        
+        # Allowed attributes
+        allowed_attrs = {
+            'a': ['href', 'title', 'target', 'rel', 'aria-label', 'itemprop'],
+            'cite': [],
+        }
+        
+        # Allowed protocols for href
+        allowed_protocols = ['http', 'https', 'mailto']
+        
+        try:
+            clean_html = bleach.clean(
+                html,
+                tags=allowed_tags,
+                attributes=allowed_attrs,
+                protocols=allowed_protocols,
+                strip=True,  # Strip disallowed tags instead of escaping
+            )
+            return clean_html
+        except Exception as e:
+            logger.error(f"bleach sanitization failed: {e}")
+            return html
+    
+    @staticmethod
+    def _validate_html(html: str) -> str:
+        """
+        Validate and fix HTML structure using BeautifulSoup.
+        
+        Auto-fixes:
+        - Unclosed tags
+        - Invalid nesting
+        - Malformed structure
+        
+        Args:
+            html: HTML to validate
+            
+        Returns:
+            Valid HTML
+        """
+        if not BS4_AVAILABLE:
+            logger.warning("BeautifulSoup not available - skipping HTML validation")
+            return html
+        
+        try:
+            # Parse with lxml (strict) or html.parser (fallback)
+            try:
+                soup = BeautifulSoup(html, 'lxml')
+            except:
+                soup = BeautifulSoup(html, 'html.parser')
+            
+            # Get body content only (removes auto-added html/body tags)
+            if soup.body:
+                return str(soup.body)[6:-7]  # Remove <body> and </body>
+            else:
+                return str(soup)
+        except Exception as e:
+            logger.error(f"BeautifulSoup validation failed: {e}")
+            return html
 
     @staticmethod
     def _clean_brackets(html: str) -> str:
