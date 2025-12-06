@@ -1527,6 +1527,50 @@ async def generate_graphics(request: GraphicsGenerationRequestModel):
         )
 
 
+class GraphicsConfigRequestModel(BaseModel):
+    """Request for JSON config-based graphics generation (new component system)."""
+    config: Dict[str, Any] = Field(..., description="JSON config with theme and components")
+    project_folder_id: Optional[str] = Field(None, description="Project Drive folder ID")
+    dimensions: Optional[List[int]] = Field([1920, 1080], description="Image dimensions [width, height]")
+
+
+@app.post("/generate-graphics-config", response_model=GraphicsGenerationResponseModel)
+async def generate_graphics_from_config(request: GraphicsConfigRequestModel):
+    """
+    Generate graphics from JSON config (new component-based API).
+    
+    Build graphics by composing reusable components with custom themes.
+    See docs/GRAPHICS_CONFIG.md for complete documentation.
+    """
+    try:
+        from .graphics_generator import GraphicsGenerator
+        
+        generator = GraphicsGenerator()
+        
+        result = await generator.generate_from_config(
+            config=request.config,
+            dimensions=tuple(request.dimensions) if request.dimensions else (1920, 1080),
+            project_folder_id=request.project_folder_id,
+        )
+        
+        return GraphicsGenerationResponseModel(
+            success=result.success,
+            image_url=result.image_url,
+            alt_text=result.alt_text,
+            drive_file_id=result.drive_file_id,
+            generation_time_seconds=result.generation_time_seconds,
+            error=result.error,
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating graphics from config: {e}", exc_info=True)
+        return GraphicsGenerationResponseModel(
+            success=False,
+            generation_time_seconds=0.0,
+            error=str(e),
+        )
+
+
 # =============================================================================
 # TRANSLATION ENDPOINT
 # =============================================================================
