@@ -161,28 +161,35 @@ class ImageGenerator:
             
             logger.info(f"Generated image ({len(image_bytes)} bytes)")
             
-            # Step 3: Get target folder and upload
-            # Note: Service accounts can't upload to root - must have a folder ID
-            if not request.project_folder_id:
-                raise ValueError("project_folder_id required - service accounts cannot upload to Drive root")
+            # Step 3: Upload to Drive (or return base64 if Drive unavailable)
+            drive_file_id = None
+            image_url = ""
             
-            if not self.drive_service:
-                raise ValueError("Drive service not initialized - check GOOGLE_SERVICE_ACCOUNT env var")
-            
-            target_folder_id = await self._get_graphics_folder(request.project_folder_id)
-            if not target_folder_id:
-                # If we can't find/create the Graphics folder, upload directly to project folder
-                target_folder_id = request.project_folder_id
-                logger.warning(f"Could not find Graphics folder, uploading to project folder: {target_folder_id}")
-            
-            file_name = f"{self._slugify(request.keyword)}_{int(time.time())}.png"
-            drive_file_id = await self._upload_to_drive(image_bytes, file_name, target_folder_id)
-            
-            # Step 4: Make publicly viewable
-            if drive_file_id:
-                await self._make_public(drive_file_id)
-            
-            image_url = f"https://drive.google.com/uc?export=view&id={drive_file_id}" if drive_file_id else ""
+            if request.project_folder_id and self.drive_service:
+                try:
+                    target_folder_id = await self._get_graphics_folder(request.project_folder_id)
+                    if not target_folder_id:
+                        target_folder_id = request.project_folder_id
+                        logger.warning(f"Could not find Graphics folder, uploading to project folder: {target_folder_id}")
+                    
+                    file_name = f"{self._slugify(request.keyword)}_{int(time.time())}.png"
+                    drive_file_id = await self._upload_to_drive(image_bytes, file_name, target_folder_id)
+                    
+                    # Make publicly viewable
+                    if drive_file_id:
+                        await self._make_public(drive_file_id)
+                        image_url = f"https://drive.google.com/uc?export=view&id={drive_file_id}"
+                        logger.info(f"Image uploaded to Drive: {drive_file_id}")
+                except Exception as drive_error:
+                    logger.warning(f"Drive upload failed: {drive_error}, returning base64 image data")
+                    # Fallback: return base64 image data
+                    image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+                    image_url = f"data:image/png;base64,{image_b64}"
+            else:
+                # No Drive configured - return base64
+                logger.info("No Drive folder ID or Drive service, returning base64 image")
+                image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+                image_url = f"data:image/png;base64,{image_b64}"
             generation_time = time.time() - start_time
             
             logger.info(f"Image uploaded to Drive: {drive_file_id} ({generation_time:.1f}s)")
