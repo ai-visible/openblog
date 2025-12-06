@@ -471,10 +471,11 @@ RETRY_CONFIGS = {
 }
 
 # Circuit breakers for external services
+# NOTE: Short recovery timeouts for serverless deployments (containers get recycled)
 circuit_breakers = {
-    "gemini_api": CircuitBreaker(failure_threshold=3, recovery_timeout=300),
-    "image_api": CircuitBreaker(failure_threshold=2, recovery_timeout=180),
-    "url_validation": CircuitBreaker(failure_threshold=5, recovery_timeout=120),
+    "gemini_api": CircuitBreaker(failure_threshold=5, recovery_timeout=30),  # 30 seconds
+    "image_api": CircuitBreaker(failure_threshold=3, recovery_timeout=30),
+    "url_validation": CircuitBreaker(failure_threshold=10, recovery_timeout=15),
 }
 
 

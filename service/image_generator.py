@@ -107,7 +107,7 @@ class ImageGenerator:
             # This allows the SA to use the user's Drive quota
             if self.DELEGATION_SUBJECT:
                 credentials = credentials.with_subject(self.DELEGATION_SUBJECT)
-                logger.info(f"Using domain-wide delegation as: {self.DELEGATION_SUBJECT}")
+            logger.info(f"Using domain-wide delegation as: {self.DELEGATION_SUBJECT}")
             else:
                 logger.info("Using service account credentials (no delegation)")
             

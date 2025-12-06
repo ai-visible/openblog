@@ -1,8 +1,9 @@
 """
 Modal deployment configuration for blog-writer service
 
-v2: Uses scaile-services OpenRouter gateway for all AI calls (no direct Gemini API)
-v3: Image generation now uses OpenRouter Gemini 3 Pro Image (best quality)
+v3: Direct Google GenAI SDK for Gemini calls (no external dependencies)
+    - Uses google-genai package with built-in Google Search grounding
+    - Image generation via OpenRouter
 """
 
 import modal

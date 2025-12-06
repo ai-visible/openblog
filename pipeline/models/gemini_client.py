@@ -1,27 +1,20 @@
 """
-AI Client with Tools Support - Using scaile-services OpenRouter Gateway
+AI Client with Tools Support - Direct Google GenAI SDK
 
-Handles:
-- Initialization with scaile-services endpoint
-- Configuration (text/plain + tools)
-- API calls with tool execution
+Uses google-genai SDK directly for:
+- Gemini content generation
+- Built-in Google Search grounding (free 1,500/day)
+  - Automatically fetches URL context from search results
+  - Provides real-time web information
 - Response parsing (JSON extraction from plain text)
-- Retry logic (exponential backoff)
-- Error handling
-
-This client enables DEEP RESEARCH because:
-- Tools: google_search + url_context enable web search during generation
-- Response format: text/plain allows natural language + JSON mix
-- scaile-services handles all model failover and tool execution
+- Retry logic with exponential backoff
 
 Configuration:
-- Model: google/gemini-2.5-flash (default, fast) - configurable
-- Quality mode: google/gemini-3-pro-preview (slower, higher quality)
+- Model: gemini-3.0-pro-preview (default, Gemini 3.0 Pro Preview)
+- Quality mode: gemini-3.0-pro-preview (same model)
 - Response mime type: text/plain (NOT application/json)
 - Temperature: 0.2 (consistency)
-- Tools: [google_search, url_context] ENABLED via scaile-services
-
-v2: Uses scaile-services OpenRouter gateway for all AI calls
+- Tools: Google Search (includes URL context via search results)
 """
 
 import os
@@ -30,30 +23,23 @@ import re
 import time
 import asyncio
 import logging
-import httpx
 from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
-# scaile-services endpoint
-SCAILE_SERVICES_URL = os.environ.get(
-    "SCAILE_SERVICES_URL", 
-    "https://clients--scaile-services-fastapi-app.modal.run"
-)
-
-# Default models
-# Blog content needs high quality - use 3.0 Pro by default
-DEFAULT_MODEL = "google/gemini-3-pro-preview"  # Quality mode (default for blog writing)
-FAST_MODEL = "google/gemini-2.5-flash"  # Fast mode (for testing/drafts)
+# Default models - using Gemini 3.0 Pro Preview
+DEFAULT_MODEL = "gemini-3-pro-preview"  # Gemini 3.0 Pro Preview with search grounding (includes URL context)
+QUALITY_MODEL = "gemini-3-pro-preview"  # Same model for quality mode
 
 
 class GeminiClient:
     """
-    AI client for content generation with tools.
-    Uses scaile-services OpenRouter gateway for all AI calls.
+    AI client for content generation with Google Search grounding.
+    Uses google-genai SDK directly.
 
     Implements:
-    - Content generation with tools (google_search, url_context)
+    - Content generation with Google Search grounding
+      (automatically fetches URL context from search results)
     - Response parsing (JSON extraction from text/plain)
     - Retry logic with exponential backoff
     - Error handling and logging
@@ -62,7 +48,7 @@ class GeminiClient:
     # Configuration constants
     RESPONSE_MIME_TYPE = "text/plain"  # Critical: NOT application/json
     TEMPERATURE = 0.2  # Consistency
-    MAX_OUTPUT_TOKENS = 65536  # Full article (not sent to API by default)
+    MAX_OUTPUT_TOKENS = 65536  # Full article
 
     # Retry configuration
     MAX_RETRIES = 3
@@ -74,18 +60,30 @@ class GeminiClient:
         Initialize AI client.
 
         Args:
-            model: Model name (defaults to GEMINI_MODEL env var or google/gemini-2.5-flash)
-            api_key: Ignored - scaile-services handles auth
+            model: Model name (defaults to GEMINI_MODEL env var or gemini-2.0-flash-exp)
+            api_key: Gemini API key (defaults to GEMINI_API_KEY env var)
         """
-        # Set model (constructor arg > env var > default)
+        # Set model
         self.MODEL = model or os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
         
-        # Map old model names to new OpenRouter format if needed
-        if not self.MODEL.startswith("google/") and not self.MODEL.startswith("openai/"):
-            self.MODEL = f"google/{self.MODEL}"
+        # Get API key
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        if not self.api_key:
+            raise ValueError("GEMINI_API_KEY environment variable required")
         
-        self.base_url = SCAILE_SERVICES_URL
-        logger.info(f"AI client initialized (model: {self.MODEL}, backend: scaile-services)")
+        # Initialize client with v1alpha API version for Gemini 3.0 Pro Preview
+        try:
+            from google import genai
+            from google.genai import types
+            # Use v1alpha API version for preview models
+            self.client = genai.Client(
+                api_key=self.api_key,
+                http_options=types.HttpOptions(api_version='v1alpha')
+            )
+            self._genai = genai
+            logger.info(f"AI client initialized (model: {self.MODEL}, backend: google-genai SDK, API: v1alpha)")
+        except ImportError:
+            raise ImportError("google-genai package required. Install with: pip install google-genai")
 
     async def generate_content(
         self,
@@ -93,13 +91,11 @@ class GeminiClient:
         enable_tools: bool = True,
     ) -> str:
         """
-        Generate content using scaile-services AI endpoint.
+        Generate content using Gemini API with Google Search grounding.
 
         Args:
             prompt: Complete prompt string
-            enable_tools: Whether to enable tools (default: True)
-                - google_search: Real-time web search
-                - url_context: Ground content in URLs
+            enable_tools: Whether to enable Google Search grounding (includes URL context)
 
         Returns:
             Raw response text (plain text with embedded JSON)
@@ -109,23 +105,20 @@ class GeminiClient:
         """
         logger.info(f"Generating content with {self.MODEL}")
         logger.debug(f"Prompt length: {len(prompt)} characters")
-        logger.debug(f"Tools enabled: {enable_tools}")
-
-        # Build tools list
-        tools = ["google_search", "url_context"] if enable_tools else []
+        logger.debug(f"Grounding tools: {enable_tools}")
 
         # Call API with retry logic
-        response_text = await self._call_api_with_retry(prompt, tools)
+        response_text = await self._call_api_with_retry(prompt, enable_tools)
 
         return response_text
 
-    async def _call_api_with_retry(self, prompt: str, tools: List[str]) -> str:
+    async def _call_api_with_retry(self, prompt: str, enable_grounding: bool) -> str:
         """
-        Call scaile-services API with exponential backoff retry.
+        Call Gemini API with exponential backoff retry.
 
         Args:
             prompt: Complete prompt
-            tools: List of tools to enable
+            enable_grounding: Whether to enable Google Search grounding (includes URL context)
 
         Returns:
             Response text
@@ -140,60 +133,49 @@ class GeminiClient:
             try:
                 logger.debug(f"API call attempt {attempt + 1}/{self.MAX_RETRIES}")
 
-                # Build request payload
-                # Note: Blog generation uses text/plain to allow natural language + embedded JSON
-                # The prompt itself instructs JSON output, but response format is text/plain
-                payload = {
-                    "prompt": prompt,
-                    "model": self.MODEL,
-                    "temperature": self.TEMPERATURE,
-                    "response_format": "text/plain",  # Allow natural language + JSON mix
-                }
-                
-                # Add tools if enabled
-                if tools:
-                    payload["tools"] = tools
-                    payload["execute_tools"] = True
+                # Build grounding tools if enabled
+                tools = None
+                if enable_grounding:
+                    # Google Search grounding automatically includes URL context from search results
+                    tools = [
+                        self._genai.types.Tool(google_search=self._genai.types.GoogleSearch()),
+                    ]
+                    logger.debug("Google Search grounding enabled (includes URL context)")
 
-                # Make HTTP request (5 min timeout for deep research)
-                async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
-                    response = await client.post(
-                        f"{self.base_url}/ai/generate",
-                        json=payload
+                # Make synchronous call (google-genai doesn't have native async)
+                # Run in executor to not block event loop
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: self.client.models.generate_content(
+                        model=self.MODEL,
+                        contents=prompt,
+                        config=self._genai.types.GenerateContentConfig(
+                            temperature=self.TEMPERATURE,
+                            max_output_tokens=self.MAX_OUTPUT_TOKENS,
+                            tools=tools,
+                        )
                     )
+                )
 
-                if response.status_code != 200:
-                    error_text = response.text[:500]
-                    logger.error(f"AI service error: {response.status_code} - {error_text}")
-                    
-                    # Check if retryable
-                    if response.status_code in [429, 503, 502, 504]:
-                        last_error = Exception(f"HTTP {response.status_code}: {error_text[:200]}")
-                        if attempt < self.MAX_RETRIES - 1:
-                            logger.warning(f"Retryable error (attempt {attempt + 1})")
-                            logger.info(f"Waiting {wait_time:.1f}s before retry...")
-                            await asyncio.sleep(wait_time)
-                            wait_time *= self.RETRY_BACKOFF_MULTIPLIER
-                            continue
-                    raise Exception(f"AI service error: {response.status_code} - {error_text[:200]}")
+                # Extract text from response
+                if not response or not response.text:
+                    raise Exception("Empty response from Gemini API")
 
-                result = response.json()
-                response_text = result.get("content", "")
-
-                if not response_text:
-                    raise Exception("Empty response from AI service")
-
+                response_text = response.text
                 logger.info(f"✅ API call succeeded ({len(response_text)} chars)")
-                return response_text
+                
+                # Log grounding metadata if available
+                if hasattr(response, 'candidates') and response.candidates:
+                    candidate = response.candidates[0]
+                    if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
+                        gm = candidate.grounding_metadata
+                        if hasattr(gm, 'search_entry_point') and gm.search_entry_point:
+                            logger.info("🔍 Google Search grounding used")
+                        if hasattr(gm, 'grounding_chunks') and gm.grounding_chunks:
+                            logger.info(f"📎 {len(gm.grounding_chunks)} grounding sources")
 
-            except httpx.TimeoutException as e:
-                last_error = e
-                logger.warning(f"Timeout error (attempt {attempt + 1}): {e}")
-                if attempt < self.MAX_RETRIES - 1:
-                    logger.info(f"Waiting {wait_time:.1f}s before retry...")
-                    time.sleep(wait_time)
-                    wait_time *= self.RETRY_BACKOFF_MULTIPLIER
-                continue
+                return response_text
 
             except Exception as e:
                 last_error = e
@@ -212,7 +194,7 @@ class GeminiClient:
                         f"Retryable error (attempt {attempt + 1}): {error_type}: {e}"
                     )
                     logger.info(f"Waiting {wait_time:.1f}s before retry...")
-                    time.sleep(wait_time)
+                    await asyncio.sleep(wait_time)
                     wait_time *= self.RETRY_BACKOFF_MULTIPLIER
                 else:
                     logger.error(f"All {self.MAX_RETRIES} retries failed: {error_type}")
@@ -256,6 +238,8 @@ class GeminiClient:
             "503",
             "temporarily unavailable",
             "deadline exceeded",
+            "resource exhausted",
+            "quota",
         ]
 
         # Non-retryable patterns
@@ -269,6 +253,7 @@ class GeminiClient:
             "400",
             "invalid",
             "malformed",
+            "api key",
         ]
 
         # Check patterns
@@ -324,4 +309,4 @@ class GeminiClient:
 
     def __repr__(self) -> str:
         """String representation."""
-        return f"GeminiClient(model={self.MODEL}, backend=scaile-services)"
+        return f"GeminiClient(model={self.MODEL}, backend=google-genai)"

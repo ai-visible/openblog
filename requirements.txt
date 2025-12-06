@@ -9,9 +9,10 @@ tenacity>=8.2.3
 fastapi>=0.104.0
 uvicorn>=0.24.0
 
-# Google APIs (for Drive upload)
+# Google APIs (for Drive upload + Gemini)
 google-api-python-client>=2.100.0
 google-auth>=2.23.0
+google-genai>=1.0.0
 
 # Optional dependencies
 supabase>=2.0.0
@@ -21,3 +22,4 @@ pillow>=10.0.0
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
 
+# Force rebuild Sat Dec  6 00:55:41 CET 2025

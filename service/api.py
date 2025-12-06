@@ -17,6 +17,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
+
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
