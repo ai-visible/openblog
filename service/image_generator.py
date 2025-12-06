@@ -1,9 +1,10 @@
 """
 Image Generation Service
-Generates blog images using Gemini 3 Pro Image via OpenRouter.
+Generates blog images using Google GenAI SDK (gemini-2.5-flash-image).
 Uploads to Google Drive and makes publicly viewable.
 
-v2: Uses OpenRouter with google/gemini-3-pro-image-preview (best quality)
+v3: Uses Google GenAI SDK directly (consistent with blog generation)
+Updated: 2025-12-06 - Fixed syntax error, removed OpenRouter dependency
 """
 
 import os
@@ -15,7 +16,6 @@ import logging
 from typing import Optional, Dict, Any
 from dataclasses import dataclass, asdict
 
-import httpx
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload
@@ -56,13 +56,12 @@ class ImageGenerationResponse:
 class ImageGenerator:
     """
     Handles blog image generation using:
-    - Gemini 3 Pro Image via OpenRouter (best quality image generation)
+    - Google GenAI SDK (gemini-2.5-flash-image) - Direct SDK, consistent with blog generation
     - Google Drive for storage
     """
 
-    # OpenRouter config
-    OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-    IMAGE_MODEL = "google/gemini-3-pro-image-preview"  # Best Google image model
+    # Google GenAI SDK config
+    IMAGE_MODEL = "gemini-2.5-flash-image"  # Google's image generation model
     
     # Drive folder structure: Project → Content Output → Graphics (Final)
     CONTENT_OUTPUT_FOLDER = "04 - Content Output"
@@ -73,9 +72,24 @@ class ImageGenerator:
     DELEGATION_SUBJECT = os.getenv("GOOGLE_DELEGATION_SUBJECT", "")
 
     def __init__(self):
-        self.openrouter_key = os.getenv("OPENROUTER_API_KEY")
-        if not self.openrouter_key:
-            raise ValueError("OPENROUTER_API_KEY not configured")
+        # Get Gemini API key (same as blog generation)
+        self.api_key = os.getenv("GEMINI_API_KEY")
+        if not self.api_key:
+            raise ValueError("GEMINI_API_KEY environment variable required")
+        
+        # Initialize Google GenAI client
+        try:
+            from google import genai
+            from google.genai import types
+            self.client = genai.Client(
+                api_key=self.api_key,
+                http_options=types.HttpOptions(api_version='v1alpha')  # Use v1alpha for preview models
+            )
+            self._genai = genai
+            self._types = types
+            logger.info(f"Image generator initialized (model: {self.IMAGE_MODEL}, backend: google-genai SDK)")
+        except ImportError:
+            raise ImportError("google-genai package required. Install with: pip install google-genai")
         
         # Initialize Google Drive service
         self.drive_service = self._init_drive_service()
@@ -107,7 +121,7 @@ class ImageGenerator:
             # This allows the SA to use the user's Drive quota
             if self.DELEGATION_SUBJECT:
                 credentials = credentials.with_subject(self.DELEGATION_SUBJECT)
-            logger.info(f"Using domain-wide delegation as: {self.DELEGATION_SUBJECT}")
+                logger.info(f"Using domain-wide delegation as: {self.DELEGATION_SUBJECT}")
             else:
                 logger.info("Using service account credentials (no delegation)")
             
@@ -141,7 +155,7 @@ class ImageGenerator:
             
             logger.info(f"Generated prompt ({len(prompt)} chars)")
             
-            # Step 2: Generate image with Gemini 3 Pro Image via OpenRouter
+            # Step 2: Generate image with Google GenAI SDK
             image_bytes = await self._generate_image(prompt)
             
             logger.info(f"Generated image ({len(image_bytes)} bytes)")
@@ -363,71 +377,63 @@ class ImageGenerator:
 
     async def _generate_image(self, prompt: str, max_retries: int = 3) -> bytes:
         """
-        Generate image using Gemini 3 Pro Image via OpenRouter.
+        Generate image using Google GenAI SDK (gemini-2.5-flash-image).
         Includes retry logic with exponential backoff.
         """
-        
-        headers = {
-            "Authorization": f"Bearer {self.openrouter_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/federicodeponte/openblog",
-            "X-Title": "OpenBlog",
-        }
-        
-        payload = {
-            "model": self.IMAGE_MODEL,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
-            "modalities": ["image", "text"],
-            "stream": False,
-        }
-        
         last_error = None
+        wait_time = 5.0
         
         for attempt in range(max_retries):
             try:
-                async with httpx.AsyncClient(timeout=120.0) as client:
-                    response = await client.post(self.OPENROUTER_URL, headers=headers, json=payload)
-                    
-                    if response.status_code == 429:
-                        # Rate limited - wait and retry
-                        wait_time = (2 ** attempt) * 5  # 5s, 10s, 20s
-                        logger.warning(f"Rate limited, waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
-                        await self._async_sleep(wait_time)
-                        continue
-                    
-                    if response.status_code >= 500:
-                        # Server error - retry with backoff
-                        wait_time = (2 ** attempt) * 2  # 2s, 4s, 8s
-                        logger.warning(f"Server error {response.status_code}, retrying in {wait_time}s ({attempt + 1}/{max_retries})")
-                        await self._async_sleep(wait_time)
-                        continue
-                    
-                    if not response.is_success:
-                        error_text = response.text
-                        raise ValueError(f"OpenRouter error: {response.status_code} - {error_text[:200]}")
+                logger.debug(f"Image generation attempt {attempt + 1}/{max_retries}")
                 
-                result = response.json()
+                # Generate image using Google GenAI SDK
+                # Run synchronous call in executor to avoid blocking event loop
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: self.client.models.generate_content(
+                        model=self.IMAGE_MODEL,
+                        contents=prompt,
+                        config=self._types.GenerateContentConfig(
+                            response_modalities=[self._types.Modality.TEXT, self._types.Modality.IMAGE]
+                        )
+                    )
+                )
                 
                 # Extract image from response
-                image_bytes = self._extract_image_from_response(result)
+                image_bytes = self._extract_image_from_genai_response(response)
                 if image_bytes:
+                    logger.info(f"✅ Successfully generated image ({len(image_bytes)} bytes)")
                     return image_bytes
                 
                 # No image in response - might be a content policy issue, retry
                 logger.warning(f"No image in response, retrying ({attempt + 1}/{max_retries})")
-                await self._async_sleep(2)
+                await self._async_sleep(wait_time)
+                wait_time *= 2
                 
-            except httpx.TimeoutException:
-                last_error = "Request timed out after 120s"
-                logger.warning(f"Timeout on attempt {attempt + 1}/{max_retries}")
-                await self._async_sleep(5)
             except Exception as e:
                 last_error = str(e)
+                error_str = str(e).lower()
+                
+                # Check if error is retryable
+                retryable = (
+                    "rate limit" in error_str or
+                    "429" in error_str or
+                    "quota" in error_str or
+                    "timeout" in error_str or
+                    "503" in error_str or
+                    "temporarily unavailable" in error_str
+                )
+                
+                if not retryable:
+                    logger.error(f"Non-retryable error: {e}")
+                    raise
+                
                 if attempt < max_retries - 1:
-                    logger.warning(f"Attempt {attempt + 1} failed: {e}, retrying...")
-                    await self._async_sleep(2)
+                    logger.warning(f"Retryable error (attempt {attempt + 1}): {e}, retrying in {wait_time}s...")
+                    await self._async_sleep(wait_time)
+                    wait_time *= 2
                 else:
                     raise
         
@@ -438,41 +444,53 @@ class ImageGenerator:
         import asyncio
         await asyncio.sleep(seconds)
     
-    def _extract_image_from_response(self, result: dict) -> Optional[bytes]:
-        """Extract image bytes from OpenRouter response."""
-        choices = result.get("choices", [])
-        if not choices:
+    def _extract_image_from_genai_response(self, response) -> Optional[bytes]:
+        """Extract image bytes from Google GenAI SDK response."""
+        try:
+            if not response or not hasattr(response, 'candidates'):
+                logger.warning("No candidates in GenAI response")
+                return None
+            
+            candidates = response.candidates
+            if not candidates or len(candidates) == 0:
+                logger.warning("Empty candidates in GenAI response")
+                return None
+            
+            candidate = candidates[0]
+            if not hasattr(candidate, 'content') or not candidate.content:
+                logger.warning("No content in candidate")
+                return None
+            
+            content = candidate.content
+            if not hasattr(content, 'parts') or not content.parts:
+                logger.warning("No parts in content")
+                return None
+            
+            # Look for image data in parts
+            for part in content.parts:
+                if hasattr(part, 'inline_data') and part.inline_data:
+                    if hasattr(part.inline_data, 'data'):
+                        image_data = part.inline_data.data
+                        if image_data:
+                            logger.info(f"Found inline image data ({len(image_data)} bytes)")
+                            return base64.b64decode(image_data)
+                
+                # Also check for mime_type to confirm it's an image
+                if hasattr(part, 'mime_type') and part.mime_type and part.mime_type.startswith('image/'):
+                    if hasattr(part, 'inline_data') and part.inline_data:
+                        if hasattr(part.inline_data, 'data'):
+                            image_data = part.inline_data.data
+                            if image_data:
+                                logger.info(f"Found image data with mime_type {part.mime_type}")
+                                return base64.b64decode(image_data)
+            
+            logger.warning("No image data found in response parts")
             return None
-        
-        message = choices[0].get("message", {})
-        images = message.get("images", []) or message.get("image", [])
-        
-        if not images:
+            
+        except Exception as e:
+            logger.error(f"Error extracting image from GenAI response: {e}")
             return None
-        
-        # Extract base64 data from OpenRouter format
-        for img in images:
-            if isinstance(img, dict):
-                img_url = (
-                    img.get("image_url", {}).get("url", "") or
-                    img.get("imageUrl", {}).get("url", "") or
-                    img.get("url", "") or
-                    img.get("b64_json", "")
-                )
-                if img_url.startswith("data:image"):
-                    image_data = img_url.split(",", 1)[1] if "," in img_url else None
-                    if image_data:
-                        return base64.b64decode(image_data)
-                elif img_url:
-                    return base64.b64decode(img_url)
-            elif isinstance(img, str):
-                if img.startswith("data:image"):
-                    image_data = img.split(",", 1)[1] if "," in img else img
-                    return base64.b64decode(image_data)
-                else:
-                    return base64.b64decode(img)
-        
-        return None
+    
 
     async def _get_graphics_folder(self, project_folder_id: str) -> Optional[str]:
         """Navigate to Graphics (Final) folder within project structure."""

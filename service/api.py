@@ -1396,11 +1396,11 @@ class ImageGenerationResponseModel(BaseModel):
 @app.post("/generate-image", response_model=ImageGenerationResponseModel)
 async def generate_image(request: ImageGenerationRequestModel):
     """
-    Generate an AI image for a blog article using Gemini 3 Pro Image via OpenRouter.
+    Generate an AI image for a blog article using Google GenAI SDK (gemini-2.5-flash-image).
     
     Steps:
     1. Build image prompt from article context
-    2. Generate image using Gemini 3 Pro Image (google/gemini-3-pro-image-preview)
+    2. Generate image using Google GenAI SDK (gemini-2.5-flash-image)
     3. Upload to Google Drive
     4. Make publicly viewable
     5. Return URL and metadata

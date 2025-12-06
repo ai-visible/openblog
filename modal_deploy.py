@@ -3,7 +3,7 @@ Modal deployment configuration for blog-writer service
 
 v3: Direct Google GenAI SDK for Gemini calls (no external dependencies)
     - Uses google-genai package with built-in Google Search grounding
-    - Image generation via OpenRouter
+    - Image generation via Google GenAI SDK (gemini-2.5-flash-image)
 """
 
 import modal
@@ -23,9 +23,8 @@ image = (
 @app.function(
     image=image,
     secrets=[
-        modal.Secret.from_name("gemini-api-key"),  # For Gemini API (blog generation)
+        modal.Secret.from_name("gemini-api-key"),  # For Gemini API (blog + image generation)
         modal.Secret.from_name("google-service-account"),  # For Drive upload
-        modal.Secret.from_name("openrouter-api-key"),  # For Gemini 3 Pro Image generation
     ],
     timeout=3600,  # 1 hour - blog generation can take 2-10 min, buffer for retries
     max_containers=100,
