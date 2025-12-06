@@ -1458,7 +1458,7 @@ class GraphicsGenerationRequestModel(BaseModel):
     content: Dict[str, Any] = Field(..., description="Type-specific content")
     company_data: Optional[Dict[str, Any]] = Field(None, description="Company context")
     project_folder_id: Optional[str] = Field(None, description="Project Drive folder ID")
-    dimensions: Optional[List[int]] = Field([1080, 1350], description="Image dimensions [width, height]")
+    dimensions: Optional[List[int]] = Field([1920, 1080], description="Image dimensions [width, height] - default horizontal format")
 
 
 class GraphicsGenerationResponseModel(BaseModel):
@@ -1498,7 +1498,7 @@ async def generate_graphics(request: GraphicsGenerationRequestModel):
             content=request.content,
             company_data=request.company_data,
             project_folder_id=request.project_folder_id,
-            dimensions=tuple(request.dimensions) if request.dimensions else (1080, 1350),
+            dimensions=tuple(request.dimensions) if request.dimensions else (1920, 1080),
         )
         
         result = await generator.generate(graphics_request)

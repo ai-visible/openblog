@@ -34,7 +34,7 @@ async def test_graphics():
                 },
                 company_data={"name": "Test Company"},
                 project_folder_id=None,
-                dimensions=(1080, 1350)
+                dimensions=(1920, 1080)
             ),
             "filename": "test_headline_local.png"
         },
@@ -48,7 +48,7 @@ async def test_graphics():
                     "role": "CMO, TechCorp"
                 },
                 project_folder_id=None,
-                dimensions=(1080, 1350)
+                dimensions=(1920, 1080)
             ),
             "filename": "test_quote_local.png"
         },
@@ -63,7 +63,7 @@ async def test_graphics():
                     "change_type": "positive"
                 },
                 project_folder_id=None,
-                dimensions=(1080, 1350)
+                dimensions=(1920, 1080)
             ),
             "filename": "test_metric_local.png"
         },
@@ -77,7 +77,7 @@ async def test_graphics():
                     "button_text": "Get Started"
                 },
                 project_folder_id=None,
-                dimensions=(1080, 1350)
+                dimensions=(1920, 1080)
             ),
             "filename": "test_cta_local.png"
         },
@@ -95,7 +95,7 @@ async def test_graphics():
                     ]
                 },
                 project_folder_id=None,
-                dimensions=(1080, 1350)
+                dimensions=(1920, 1080)
             ),
             "filename": "test_infographic_local.png"
         }

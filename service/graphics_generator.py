@@ -34,7 +34,7 @@ class GraphicsGenerationRequest:
     content: Dict[str, Any]  # Type-specific content
     company_data: Optional[Dict[str, Any]] = None
     project_folder_id: Optional[str] = None
-    dimensions: tuple = (1080, 1350)  # Default: Instagram story size
+    dimensions: tuple = (1920, 1080)  # Default: Horizontal format (16:9 landscape)
 
 
 @dataclass
@@ -246,7 +246,7 @@ class GraphicsGenerator:
       height: {request.dimensions[1]}px;
       display: flex;
       flex-direction: column;
-      padding: 60px 80px 80px;
+      padding: 80px 120px;
       position: relative;
     }}
     body::before {{
@@ -418,7 +418,7 @@ class GraphicsGenerator:
       height: {request.dimensions[1]}px;
       display: flex;
       flex-direction: column;
-      padding: 60px;
+      padding: 80px 120px;
       position: relative;
     }}
     body::before {{
@@ -628,7 +628,7 @@ class GraphicsGenerator:
       height: {request.dimensions[1]}px;
       display: flex;
       flex-direction: column;
-      padding: 60px;
+      padding: 80px 120px;
       position: relative;
     }}
     body::before {{
@@ -804,7 +804,7 @@ class GraphicsGenerator:
       height: {request.dimensions[1]}px;
       display: flex;
       flex-direction: column;
-      padding: 60px;
+      padding: 80px 120px;
       position: relative;
     }}
     body::before {{
@@ -968,7 +968,7 @@ class GraphicsGenerator:
       height: {request.dimensions[1]}px;
       display: flex;
       flex-direction: column;
-      padding: 60px;
+      padding: 80px 120px;
       position: relative;
     }}
     body::before {{
