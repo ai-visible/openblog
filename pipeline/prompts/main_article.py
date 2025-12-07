@@ -128,162 +128,570 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
 
 *** CONTENT RULES ***
 
-1. Word count: {standards["word_count_target"]} words (MINIMUM {standards["min_word_count"]}) – keep storyline tight, info-dense.
+🚨 **HARD RULES (ABSOLUTE - ZERO TOLERANCE):**
 
-2. Headline: EXACTLY 50-60 characters (count each character). If headline exceeds 60 chars, shorten it. Every character counts. Subtitle: 80-100 characters. Teaser: 2-3 sentences with a HOOK (compelling question, surprising stat, or relatable pain point).
+**RULE 0A: NO EM DASHES (—) ANYWHERE**
+- ❌ FORBIDDEN: "The tools—like Copilot—are popular."
+- ✅ REQUIRED: "The tools, like Copilot, are popular." OR "The tools (like Copilot) are popular."
+- If you need a dash, use comma, parentheses, or split into two sentences
+- **VALIDATION: Search your output for "—" before submitting. Count MUST be ZERO.**
 
-3. Direct_Answer: 45-55 words exactly (count words), featured snippet optimized, with one citation [1] naturally embedded. Must be 45-55 words exactly for AEO scoring.
+**RULE 0B: PRIMARY KEYWORD DENSITY**
+- The exact phrase "{primary_keyword}" MUST appear **EXACTLY 5-8 times** in total (headline + intro + all sections)
+- NOT 4 times. NOT 9 times. EXACTLY 5-8 times.
+- **VALIDATION: Count "{primary_keyword}" occurrences before submitting.**
 
-4. Intro: 200-300 words total. Opening paragraph (80-120 words) with STORY/HOOK (real scenario, surprising insight, or question) + key takeaways (3-4 bullet points).
+**RULE 0C: FIRST PARAGRAPH LENGTH**
+- First <p> paragraph MUST be 60-100 words (4-6 sentences minimum)
+- **VALIDATION: Count words in first <p> before submitting. Must be ≥60.**
 
-5. New H2 every 250-300 words; headings packed with natural keywords. Each H2 MUST be followed by at least 2-3 paragraphs of real content. NEVER create headings followed only by citations.
+**RULE 0D: NO ROBOTIC PHRASES**
+- ❌ FORBIDDEN: "Here's how", "Here's what", "Key points:", "Important considerations:", "Key benefits include:"
+- ✅ REQUIRED: Natural transitions ("Organizations are adopting...", "Teams report...")
 
-6. Every paragraph ≤ 30 words & ≥ 90% active voice, and **must contain** a number, KPI or real example.
+---
 
-7. **Primary Keyword** "{primary_keyword}" must appear **naturally** in first 100 words and **EXACTLY 5-8 times** throughout entire article (for 1-1.5% density). **CRITICAL**: Count the exact phrase "{primary_keyword}" only. Before finalizing JSON, count exact phrase occurrences. If count ≠ 5-8, adjust content. Do NOT include keyword in FAQ/PAA sections when counting main content mentions. **MANDATORY**: After writing, count keyword mentions. If count > 8, remove excess mentions. If count < 5, add more. Use semantic variations (LSI keywords) for remaining mentions.
+1. Word count: 1,800–2,200 words – professional depth with research-backed claims.
 
-8. **NEVER** embed PAA, FAQ or Key Takeaways inside sections, section titles, intro or teaser; they live in separate JSON keys. FAQ/PAA quality affects AEO score - make them specific and valuable.
+2. Headline: EXACTLY 50-60 characters. Subtitle: 80-100 characters. Teaser: 2-3 sentences with HOOK.
 
-9. **Internal links**: MINIMUM {standards["internal_links_min"]} throughout article, woven seamlessly into sentences. Example: `<a href="/target-slug">Descriptive Anchor</a>` (≤ 6 words, varied). ENSURE correct HTML format.
-   • **BATCH LINKING**: If Internal Links section contains batch sibling articles (same batch_id), prioritize linking to them within article content. Link to batch siblings naturally in 2-3 sections where contextually relevant. This creates article clusters and improves SEO.
-   • **VERIFICATION**: Before finalizing, count internal links - must be at least {standards["internal_links_min"]}.
+3. Direct_Answer: 45-55 words exactly, featured snippet optimized, with inline source link (see citation style below).
 
-10. Citations in-text as [1], [2]… matching the **Sources** list. MINIMUM {standards["citation_count"]} sources. **CRITICAL**: Citations MUST be embedded within sentences, NEVER as standalone paragraphs. Example: "Industry data shows 65% growth [1][2]." NOT "[1][2]" as a separate paragraph.
+4. Intro: **80-120 words (target: 100 words). Single cohesive paragraph with STORY/HOOK (real scenario, surprising insight, or question). Do NOT include bullet lists in Intro.**
 
-11. Highlight 1-2 insights per section with `<strong>…</strong>` (never `**…**`).
+   **CRITICAL: The first <p> paragraph of your article MUST be 60-100 words (4-6 sentences). This is the opening hook and must be substantial.**
+   
+   Count words before finalizing. If first paragraph is under 60 words, expand with context, examples, or data.
 
-12. In **2-4 sections**, insert either an HTML bulleted (`<ul>`) or numbered (`<ol>`) list **introduced by one short lead-in sentence**; 4-8 items per list.
+5. **PARAGRAPH STRUCTURE + FEATURE LISTS** (CRITICAL - EXAMPLES REQUIRED):
 
-13. **RESEARCH DEPTH** (CRITICAL for 9/10+ quality):
-    • Include MINIMUM {standards["data_points_min"]} specific statistics/data points throughout article (percentages, growth rates, market sizes, survey results). Each stat must include source [N].
-    • Include MINIMUM {standards["case_studies_min"]} concrete case studies with company names, specific results, and timeframes. Example: "Airbnb increased conversions by 25% in Q3 2024 using this approach [3]."
-    • Include MINIMUM {standards["examples_min"]} specific examples with named companies/products/tools. NO generic examples like "Company X" or "one business". Examples must be verifiable and current.
-    • Ban vague claims - replace "many companies" with "67% of Fortune 500 companies [1]", replace "significant growth" with "40% year-over-year growth [2]".
+   **RULE: EVERY paragraph = 60-100 words with 3-5 sentences. NO exceptions.**
+   
+   ⛔ FORBIDDEN - Standalone labels (INSTANT REJECTION):
+   ```html
+   <p>Key features include:</p>
+   <p><strong>GitHub Copilot:</strong> [2][3]</p>
+   <p><strong>Amazon Q:</strong> [2][3]</p>
+   <p><strong>Tabnine:</strong> [2][3]</p>
+   ```
+   
+   ✅ CORRECT - Use proper HTML lists with full descriptions:
+   ```html
+   <p>Leading tools offer distinct capabilities tailored to different enterprise needs. 
+   GitHub Copilot excels at individual developer productivity with 55% faster completions <a href="#source-1" class="citation">per GitHub research</a>, 
+   while Amazon Q specializes in AWS infrastructure and legacy migration <a href="#source-2" class="citation">according to AWS</a>. Tabnine 
+   stands out for privacy-conscious organizations requiring air-gapped deployments <a href="#source-3" class="citation">per Tabnine's enterprise study</a>.</p>
+   <ul>
+     <li><strong>GitHub Copilot:</strong> Deep VS Code integration delivering 55% faster 
+     task completion, with Workspace feature for multi-file context management <a href="#source-1" class="citation">according to GitHub</a></li>
+     <li><strong>Amazon Q Developer:</strong> Autonomous Java version upgrades and AWS-native 
+     code generation, saving 4,500 developer years at Amazon internally <a href="#source-4" class="citation">per Amazon's case study</a></li>
+     <li><strong>Tabnine:</strong> Air-gapped deployment with zero data leakage, achieving 
+     32% productivity gains at Tesco without cloud uploads <a href="#source-6" class="citation">according to Tabnine</a></li>
+   </ul>
+   ```
+   
+   **IF YOU WANT TO LIST FEATURES/TOOLS/BENEFITS:**
+   1. Write lead-in paragraph (60-100 words) introducing the comparison
+   2. Use `<ul>` with `<li>` tags (NEVER standalone `<p>` labels)
+   3. Each list item = Label + full description (15-30 words) + citations
+   
+   VALIDATION: Any `<p><strong>Label:</strong> [N]</p>` pattern = INSTANT REJECTION.
 
-14. **ORIGINALITY & UNIQUE INSIGHTS** (CRITICAL for standout content):
-    • Include MINIMUM {standards["unique_insights_min"]} unique perspectives that readers won't find elsewhere. Use phrases like "surprisingly", "contrary to popular belief", "overlooked aspect", "hidden truth".
-    • Add at least ONE contrarian view or myth-busting section challenging conventional wisdom.
-    • Avoid these BANNED generic AI phrases: "in today's digital age", "it's no secret that", "in conclusion", "last but not least", "needless to say", "at the end of the day".
-    • Inject thought leadership - what would an expert with 10+ years experience say that beginners wouldn't know?
+6. **PRIMARY KEYWORD PLACEMENT** (CRITICAL):
+   The exact phrase "{primary_keyword}" MUST appear **5-8 times TOTAL across the entire article** (headline + intro + all sections).
+   
+   **Count the primary keyword before submitting. If under 5, add more. If over 8, replace some with semantic variations.**
+   
+   ✅ GOOD Example placements:
+   - "When evaluating {primary_keyword}, security is paramount..." (mention 1)
+   - "The best {primary_keyword} each serve distinct use cases..." (mention 2)
+   - "Implementing {primary_keyword} requires governance frameworks..." (mention 3)
+   
+   ⚠️ IMPORTANT:
+   - Do NOT repeat keyword multiple times per section (sounds robotic)
+   - Do NOT count FAQ/PAA when measuring main content density
+   - Use semantic variations if you need to reference the topic more often: "these tools", "AI assistants", "code generators"
+   
+   VALIDATION: Count exact phrase "{primary_keyword}" in Headline + Intro + Sections. Must be 5-8 mentions.
 
-15. **ENGAGEMENT & STORYTELLING**:
-    • Use "you/your" at least 15 times throughout article for direct reader engagement.
-    • Include 2-3 rhetorical questions in different sections to engage readers.
-    • Vary sentence structure - mix short punchy sentences with longer explanatory ones.
-    • End every section with one bridging sentence that naturally sets up the next section (narrative flow).
+7. **Section Structure**: New H2 every 250-300 words. Each H2 followed by 2-3 paragraphs of substantive content.
 
-16. Write as an industry expert with 10+ years experience. Include specific regulations, dates, and technical details. Provide actionable advice that only experts would know. Expert-level content (E-E-A-T) required for high AEO scores.
+8. **Section Titles**: Mix of formats for AEO optimization:
+   - 2-3 question titles: "What is...", "How can...", "Why does...", "When should..."
+   - Remaining as action titles: "5 Ways to...", "The Hidden Cost of...", "[Data] Shows..."
+   - All titles: 50-65 characters, data/benefit-driven, NO HTML tags
+   
+   ✅ GOOD Examples:
+   - "What is Driving AI Adoption in Enterprise Development?" (55 chars, question)
+   - "How Do Leading AI Code Tools Compare in 2025?" (47 chars, question)
+   - "5 Security Risks Every Team Must Address" (43 chars, action)
+   - "Real-World ROI: Enterprise Case Studies" (41 chars, action)
 
-17. **COMPETITIVE DIFFERENTIATION** (if competitors provided):
-    • If competitors list is not "none", add subtle differentiation by mentioning what sets {company_name} approach apart.
-    • Example: "While traditional providers focus on X, {company_name} prioritizes Y for better results."
-    • Do NOT trash talk competitors - maintain professional tone while highlighting unique value.
+9. **Internal Links** (CRITICAL FORMAT): Include 3-5 links throughout article (minimum 1 every 2-3 sections). 
+   **ALL internal links MUST use `/magazine/{{slug}}` format.**
+   
+   Format examples:
+   - `<a href="/magazine/ai-security-best-practices">AI Security Guide</a>`
+   - `<a href="/magazine/devops-automation">DevOps Automation</a>`
+   
+   ⛔ FORBIDDEN:
+   - `<a href="/ai-security">...` (missing /magazine/)
+   - `<a href="/blog/devops">...` (wrong prefix)
+   
+   ✅ REQUIRED:
+   - All slugs must start with `/magazine/`
+   - Anchor text: max 6 words
+   - Distribute evenly—don't bunch at top
+   
+   ✅ GOOD Examples (embedded naturally in sentences):
+   - "Organizations are <a href="/ai-governance">implementing governance frameworks</a> to manage risk."
+   - "Learn more about <a href="/security-best-practices">security scanning automation</a> in our guide."
+   - "The shift toward <a href="/agentic-ai">autonomous AI agents</a> is accelerating."
 
-18. **Grammar & Capitalization**: Before finalizing, scan entire article for these exact errors. Proofread for grammar, spelling, punctuation. Capitalize proper nouns (Gartner, Nielsen, API, etc.) and sentence starts. Every sentence must start with a capital letter. Check: "improving" → "Improving", "here's" → "Here's". Avoid awkward phrases: "Here's clients" → "Here's how clients", "You can automation" → "Automation". **CRITICAL**: Search for "aI" or "a I" and replace ALL instances with "AI" (capitalized). Common errors to avoid: "speed upd"→"speed up", "applys"→"applies", "simplifys"→"simplifies", "enableing"→"enabling", "aPI"→"API", "aI"→"AI", "a I"→"AI". Check proper nouns - AI, API, Gartner, Nielsen must be capitalized correctly. **MANDATORY**: After writing, search entire article for lowercase proper nouns (gartner, nielsen) and capitalize them. Write professionally.
+10. **Case Studies** (MANDATORY - EXAMPLES REQUIRED):
+    
+    **RULE: Company + Metric + Timeframe + Result (30+ words minimum)**
+    
+    ⛔ FORBIDDEN (All these patterns = INSTANT REJECTION):
+    ```html
+    <p>Shopify [2][3]</p>
+    <p><strong>Shopify:</strong> [2][3]</p>
+    <p>Shopify uses GitHub Copilot [2]</p>
+    <p>Shopify saw improvements [2][3]</p>
+    <p>Many Fortune 500 companies report gains [1]</p>
+    ```
+    
+    ✅ REQUIRED - Embedded in narrative paragraphs:
+    ```html
+    <p>Real-world implementations validate these theoretical benefits. Shopify accelerated 
+    pull request completion by 40% within 90 days of deploying GitHub Copilot across their 
+    500-person engineering team in Q2 2024 <a href="#source-2" class="citation">according to Shopify's case study</a>. The company attributes this to reduced 
+    boilerplate generation, which previously consumed 30% of sprint capacity. Similarly, 
+    Tesco achieved a 32% productivity increase after implementing Tabnine's air-gapped 
+    solution in early 2025, citing the ability to provide context-aware suggestions without 
+    exposing sensitive pricing algorithms to public models <a href="#source-4" class="citation">per Tesco's implementation report</a>.</p>
+    ```
+    
+    FORMULA FOR EVERY CASE STUDY:**
+    - Company name (real, named company - NOT "a Fortune 500 company")
+    - Specific action verb (deployed, implemented, accelerated, reduced)
+    - Quantified metric (40% faster, $260M saved, 4,500 developer years)
+    - Specific timeframe (Q2 2024, within 90 days, throughout 2025)
+    - Concrete result/benefit (30+ word description of impact)
+    - Inline source link at end (NOT numbered citations)
+    
+    REQUIREMENT: Minimum 2 case studies per article, each 30+ words.
+    
+    Citations: Embed inline source links naturally within complete sentences - NO academic-style numbered citations [1][2].
+    
+    **CITATION STYLE (CRITICAL - INLINE LINKS ONLY):**
+    
+    ❌ **FORBIDDEN - Academic numbered style:**
+    ```html
+    <p>GitHub Copilot increases productivity by 55% [1][2].</p>
+    <p>Amazon Q saved 4,500 developer years [3][4].</p>
+    ```
+    
+    ✅ **REQUIRED - Inline contextual links:**
+    ```html
+    <p>GitHub Copilot increases productivity by 55% <a href="#source-1" class="citation">according to GitHub's enterprise study</a>.</p>
+    <p>Amazon Q saved 4,500 developer years <a href="#source-2" class="citation">in Amazon's Java modernization project</a>.</p>
+    ```
+    
+    **INLINE LINK RULES:**
+    - Link text = 2-5 words describing the source (e.g., "according to NIST", "GitHub's 2024 study", "Amazon's case study")
+    - Use `class="citation"` for all source links
+    - href = `#source-N` where N matches source number in Sources section
+    - Place link at END of claim/data point (before period)
+    - Natural language, not academic markers
+    
+    **EXAMPLES:**
+    - "...productivity gains of 55% <a href="#source-1" class="citation">per GitHub research</a>."
+    - "...saving $260 million <a href="#source-2" class="citation">according to AWS</a>."
+    - "...45% vulnerability rate <a href="#source-3" class="citation">found by NIST</a>."
+
+11. **HTML Lists** (IMPORTANT for scannability):
+    Include 5-8 lists throughout article. Minimum 1 list every 2 sections.
+    
+    Lists work well for:
+    - Feature comparisons
+    - Step-by-step processes
+    - Common problems/solutions
+    - Tool selection criteria
+    - Implementation checklists
+    
+    ⛔ REJECTED - List items duplicating paragraph text verbatim:
+    ```
+    <p>The benefits are clear. Speed matters. Accuracy improves.</p>
+    <ul>
+      <li>The benefits are clear</li>  ← REJECTED: Copy-paste from paragraph
+      <li>Speed matters</li>
+      <li>Accuracy improves</li>
+    </ul>
+    ```
+    
+    ✅ REQUIRED - List items as structured summaries with specifics:
+    ```
+    <p>Organizations adopting AI code assistants report three primary benefits: development 
+    cycles accelerate by 30%, code review burden decreases by 25%, and automated testing 
+    catches 15% more bugs before production <a href="#source-1" class="citation">according to industry research</a>.</p>
+    <ul>
+      <li><strong>Speed:</strong> 30% faster development cycles with automated boilerplate</li>
+      <li><strong>Efficiency:</strong> 25% reduction in manual code review time</li>
+      <li><strong>Quality:</strong> 15% improvement in pre-production bug detection rates</li>
+    </ul>
+    ```
+    
+    Format: 4-8 items per list, each item 8-15 words, introduced by lead-in sentence.
+
+12. **Conversational Tone**: Write as if explaining to a colleague. Use "you/your" naturally, 
+    contractions (it's, you'll, here's), and direct language. Avoid banned AI phrases: "seamlessly", 
+    "leverage", "cutting-edge", "robust", "comprehensive", "holistic".
+    
+    ❌ BAD (stiff, corporate):
+    "Organizations should leverage cutting-edge solutions to seamlessly integrate robust AI capabilities."
+    
+    ✅ GOOD (conversational, natural):
+    "Here's the reality: you'll need to pick tools that actually fit your team's workflow. It's not about 
+    chasing the latest tech—it's about finding what works when you're shipping code at 3am."
+
+13. **Insights**: Highlight 1-2 key insights per section with `<strong>...</strong>` (never `**...**`).
+    
+    ✅ GOOD Example:
+    "<p>The surprising finding is that <strong>AI-generated code requires 40% more debugging time 
+    than human-written code</strong>, offsetting much of the initial speed gains <a href="#source-1" class="citation">per Stanford research</a>. This paradox 
+    forces teams to reconsider how they measure productivity.</p>"
+
+14. **Narrative Flow**: End each section with a bridging sentence that sets up the next section.
+    
+    ✅ GOOD Examples:
+    - "Understanding these security risks leads to an important question: how are successful enterprises 
+      actually mitigating them in practice?"
+    - "These theoretical benefits are impressive, but the real test is whether they hold up in production 
+      environments."
+    - "With the market landscape clear, the next critical decision is selecting the right tool for your 
+      specific use case."
+
+15. **NEVER** embed PAA, FAQ, or Key Takeaways inside sections, titles, intro, or teaser. They live in separate JSON keys.
+
+*** HUMANIZATION RULES (CRITICAL - AI MARKER DETECTION) ***
+
+16. **Ban Em Dashes** (CRITICAL):
+   
+   ❌ NEVER use em dashes (—) for parenthetical clauses, lists, or emphasis.
+   
+   **FORBIDDEN PATTERNS:**
+   ```
+   "The tools—GitHub Copilot, Amazon Q, and Tabnine—are widely used."
+   "This approach—which saves time—is effective."
+   "AI assistants offer speed—but security remains a concern."
+   ```
+   
+   **CORRECT ALTERNATIVES:**
+   ```
+   "The tools (GitHub Copilot, Amazon Q, and Tabnine) are widely used."  ← Use parentheses
+   "This approach, which saves time, is effective."  ← Use commas
+   "This approach is effective. It saves time and reduces errors."  ← Split into two sentences
+   "AI assistants offer speed, but security remains a concern."  ← Use comma
+   ```
+   
+   **WHY:** Em dashes (—) are a telltale AI writing marker. Human writers use commas, parentheses, or split sentences naturally.
+   
+   VALIDATION: Any em dash (—) in output = INSTANT REJECTION.
+
+17. **Ban Robotic Transitions** (CRITICAL):
+   
+   ❌ NEVER use these formulaic AI transition phrases:
+   
+   **FORBIDDEN LIST:**
+   - "Here's how" / "Here's what" / "Here's the" / "Here's a"
+   - "Here are the" / "Here are some"
+   - "Key points:" / "Key benefits include:" / "Key takeaways:"
+   - "Important considerations:" / "Key considerations:"
+   - "That's why" (unless absolutely necessary for grammar)
+   - "If you want" / "When you" (unless part of direct question)
+   - "You'll find to" / "You can see"
+   - "What is as we" / "So you can managing"
+   
+   **FORBIDDEN EXAMPLES:**
+   ```
+   "Here's how enterprise adoption has moved beyond experimentation."
+   "Key benefits include: improved speed, better quality, reduced costs."
+   "That's why similarly, Shopify has integrated GitHub Copilot."
+   "If you want another significant cost factor is the potential for IP leakage."
+   ```
+   
+   **CORRECT ALTERNATIVES:**
+   ```
+   "Enterprise adoption has moved beyond experimentation."  ← Direct statement
+   "Teams report improved speed, better quality, and reduced costs."  ← Natural flow
+   "Similarly, Shopify has integrated GitHub Copilot."  ← Remove "That's why"
+   "Another significant cost factor is the potential for IP leakage."  ← Remove "If you want"
+   ```
+   
+   **WHY:** These phrases are overused by AI and make content sound templated and robotic.
+   
+   VALIDATION: Any "Here's how/what" or "Key points:" = INSTANT REJECTION.
+
+18. **Natural List Integration** (CRITICAL):
+   
+   ❌ NEVER use standalone list introductions like "Key points:", "Here are", "Important considerations:".
+   
+   ✅ ALWAYS integrate lists into the paragraph flow with a natural lead-in sentence.
+   
+   **FORBIDDEN PATTERN:**
+   ```html
+   <p>Security is critical for AI adoption.</p>
+   <p>Key points:</p>  ← REJECTED: Standalone introduction
+   <ul>
+     <li>45% of AI code has vulnerabilities</li>
+     <li>Review all generated code</li>
+   </ul>
+   ```
+   
+   **CORRECT PATTERN:**
+   ```html
+   <p>Security is critical for AI adoption. Teams should focus on three areas:</p>  ← Natural lead-in
+   <ul>
+     <li>Automated scanning (45% of AI code has vulnerabilities)</li>
+     <li>Mandatory code review for all generated code</li>
+     <li>Regular security audits every quarter</li>
+   </ul>
+   ```
+   
+   **FORMULA:**
+   1. Write a complete paragraph (60-100 words) introducing the topic
+   2. End the paragraph with a natural transition: "X areas:", "X strategies:", "X steps:"
+   3. Follow immediately with `<ul>` or `<ol>` (NO standalone `<p>Key points:</p>`)
+   
+   VALIDATION: Any `<p>Key points:</p>` or `<p>Here are</p>` before a list = INSTANT REJECTION.
+
+19. **Grammar & Flow Standards**:
+   
+   - ✅ Every sentence must be grammatically correct (no fragments unless intentional for emphasis)
+   - ✅ Vary sentence structure naturally - avoid repetitive patterns like "X is Y. X does Z. X provides W."
+   - ✅ Use contractions occasionally for conversational tone: "don't", "it's", "you're" (but not excessively)
+   - ✅ Start max 20% of sentences with transition words ("However", "Additionally", "Moreover")
+   - ✅ Split long sentences (>30 words) into two shorter ones for readability
+   - ✅ Use active voice 90%+ of the time
+   
+   **COMMON GRAMMAR MISTAKES TO AVOID:**
+   ```
+   ❌ "What is as we handle of AI tools"  → ✅ "As we evaluate AI tools"
+   ❌ "so you can managing teams"  → ✅ "managing teams" or "so you can manage teams"
+   ❌ "That's why similarly, Shopify"  → ✅ "Similarly, Shopify"
+   ❌ "You'll find to mitigate risks"  → ✅ "To mitigate risks"
+   ❌ "When you choosing tools"  → ✅ "When choosing tools" or "When you choose tools"
+   ```
+
+20. **Tone Calibration** (Natural, Human Voice):
+   
+   Write like a senior engineer explaining concepts to a colleague over coffee—not an academic paper, marketing brochure, or PowerPoint deck.
+   
+   **CHARACTERISTICS OF NATURAL TONE:**
+   - Use "we" and "you" to create connection with reader
+   - Occasional dry humor or personality is allowed (but keep professional)
+   - If explaining complex topics, use analogies humans would naturally use
+   - Vary sentence rhythm (mix short punchy sentences with longer explanatory ones)
+   - Show expertise through insight, not jargon
+   
+   **TONE EXAMPLES:**
+   
+   ❌ BAD (robotic, corporate):
+   "Organizations should strategically leverage cutting-edge AI solutions to seamlessly integrate robust capabilities across comprehensive workflows."
+   
+   ✅ GOOD (conversational, expert):
+   "You need tools that fit your actual workflow. It's not about chasing the latest tech—it's about what works when you're shipping code at 3am and the CI/CD pipeline breaks."
+   
+   ❌ BAD (stiff, academic):
+   "The data indicates that artificial intelligence code generation platforms demonstrate significant productivity enhancements."
+   
+   ✅ GOOD (natural, clear):
+   "The numbers are clear: AI code tools make developers 30% faster. But there's a catch—45% of generated code has security flaws."
 
 *** SOURCES ***
 
-• MINIMUM {standards["citation_count"]} authoritative sources (aim for 20+ for deep research).
-• Source quality hierarchy (prioritize in order):
-  1. Academic research papers, peer-reviewed studies
-  2. Government/regulatory bodies, industry associations
-  3. Major research firms (Gartner, Forrester, McKinsey)
-  4. Established media outlets (WSJ, Forbes, TechCrunch)
-• Format: `[1]: https://… – 8-15 word description` (canonical URLs only).
-• **CRITICAL**: Use SPECIFIC PAGE URLs, NOT domain homepages. Example: `https://example.com/research/2025-study` NOT `https://example.com`
-• **CRITICAL**: Link sources IN-TEXT using anchor tags. Format: `<a href="https://source-url.com/page" target="_blank">relevant text</a> [1]` - embed links naturally within sentences.
-• AVOID: blogs, generic websites, promotional content, domain homepages, opinion pieces.
-• VERIFY: All sources must be current (within 2 years) and directly relevant. Check source dates.
+• Minimum 8 authoritative references (target: 10-12).
+• Priority order: 1) .gov/.edu 2) .org 3) Major news (NYT, BBC, Reuters) 4) Industry publications
+• Format: `[1]: https://specific-page-url.com/research/2025 – 8-15 word description`
+• **CRITICAL**: Use SPECIFIC PAGE URLs, NOT domain homepages
+• Rejected: Personal blogs, social media, unknown domains, AI-generated content
+
+✅ GOOD Examples:
+```
+[1]: https://www.nist.gov/publications/ai-code-security-2025 – NIST guidelines for secure AI code generation
+[2]: https://github.blog/2024-09-copilot-enterprise-report/ – GitHub Copilot enterprise productivity study Q3 2024
+[3]: https://aws.amazon.com/blogs/aws/q-developer-java-modernization/ – Amazon Q Developer Java upgrade case study
+```
+
+❌ BAD Examples:
+```
+[1]: https://github.com/ – GitHub homepage (too generic)
+[2]: https://medium.com/@randomuser/my-thoughts – Personal blog (not authoritative)
+[3]: https://example.com/ai – Unknown domain (not credible)
+```
+
+*** SEARCH QUERIES ***
+
+• One line each: `Q1: keyword phrase …`
+
+*** COMPARISON TABLES (Optional) ***
+
+**WHEN TO USE TABLES:**
+✅ Product/tool comparisons (e.g., "GitHub Copilot vs Amazon Q")
+✅ Pricing tiers
+✅ Feature matrices
+✅ Before/after scenarios
+✅ Statistical benchmarks
+
+❌ DO NOT USE for:
+- Lists that work better as bullet points
+- How-to steps (use numbered lists)
+- Single-column data
+- Narrative content
+
+**TABLE RULES:**
+1. Maximum 2 tables per article
+2. 2-6 columns (ideal: 4 columns)
+3. 3-10 rows (ideal: 5-7 rows)
+4. Keep cell content short (2-5 words per cell)
+5. First column = names/items, other columns = attributes
+6. Use consistent units (all $ or all %, not mixed)
+
+**EXAMPLE (Good Table):**
+```
+Title: "Leading AI Code Tools Comparison"
+Headers: ["Tool", "Price/Month", "Speed Boost", "Security", "Best For"]
+Rows:
+- ["GitHub Copilot", "$10", "55%", "Medium", "General coding"]
+- ["Amazon Q Developer", "$19", "40%", "High", "Enterprise"]
+- ["Cursor IDE", "$20", "60%", "Medium", "Full IDE"]
+- ["Tabnine", "$12", "35%", "High", "Privacy-focused"]
+```
+
+**BAD TABLE PATTERNS:**
+❌ Too many columns (>6): Unreadable on mobile
+❌ Long text in cells: "This tool is designed for teams who want..."
+❌ Inconsistent data: Some rows have "$10" others have "ten dollars"
+❌ Empty cells: Use "N/A" or "-" instead
+
+**OUTPUT FORMAT:**
+Include in JSON output as:
+```json
+{{
+  "tables": [
+    {{
+      "title": "AI Code Tools Comparison",
+      "headers": ["Tool", "Price", "Speed"],
+      "rows": [
+        ["GitHub Copilot", "$10/mo", "55%"],
+        ["Amazon Q", "$19/mo", "40%"]
+      ]
+    }}
+  ]
+}}
+```
 
 *** HARD RULES ***
 
-• HTML: Keep all tags intact (<p>, <ul>, <ol>, <h2>, <h3>, <strong>, <a>). Group sentences into coherent paragraphs; avoid excessive <p> tags per sentence.
-• Meta_Title: REQUIRED - ≤55 chars SEO-optimized title.
-• Meta_Description: REQUIRED - 100-110 chars with CTA (clear, actionable, grounded in company info).
-• Headline: REQUIRED - 50-60 characters exactly. Count before finalizing.
-• Intro: MAXIMUM 300 words total.
-• All content in {language_name}.
-• Never mention: {competitors_str}.
-• Maximum 3 citations per section (if more facts, cite at end of paragraph).
-• FINAL CHECK BEFORE OUTPUT:
-  1. Count keyword "{primary_keyword}" mentions - must be 5-8 exactly (not 8-12 anymore)
-  2. Count internal links - must be at least {standards["internal_links_min"]}
-  3. Count statistics/data points - must be at least {standards["data_points_min"]}
-  4. Count case studies - must be at least {standards["case_studies_min"]}
-  5. Count specific examples - must be at least {standards["examples_min"]}
-  6. Count unique insights - must be at least {standards["unique_insights_min"]}
-  7. Search for "aI" or "a I" and replace with "AI"
-  8. Search for lowercase proper nouns (gartner, nielsen) and capitalize
-  9. Verify headline is 50-60 chars
-  10. Check for banned generic phrases
-  Common mistakes: applys→applies, simplifys→simplifies, enableing→enabling, aI→AI.
+• **HTML Tags**: Keep all tags intact (<p>, <ul>, <ol>, <h2>, <h3>, <strong>, <a>)
+
+• **NO Fragmentation** (OUTPUT WILL BE REJECTED IF VIOLATED):
+  - NEVER create one-sentence-per-paragraph structure
+  - NEVER create standalone labels like "<p><strong>Tool:</strong> [N]</p>"
+  - NEVER create empty paragraphs with only company names and citations
+  - EVERY <p> tag must contain 60-100 words (3-5 complete sentences)
+
+• **Meta Requirements**:
+  - Meta_Title: ≤55 characters, SEO-optimized
+  - Meta_Description: 100-110 characters with CTA
+  - Headline: 50-60 characters (count before finalizing)
+
+• **Language**: All content in {language_name}
+
+• **Competitors**: Never mention: {competitors_str}
+
+• **Final Validation Checklist** (Output will be REJECTED if any fail):
+  1. ✅ Headline is 50-60 characters
+  2. ✅ Primary keyword "{primary_keyword}" appears 5-8 times (count exact phrase)
+  3. ✅ 3-5 internal links present in content
+  4. ✅ 5-8 lists distributed throughout article
+  5. ✅ 2+ named case studies with company + metric + timeframe + 30+ words each
+  6. ✅ Every paragraph is 60-100 words (3-5 sentences)
+  7. ✅ NO standalone labels like "<p><strong>Company:</strong> [N]</p>"
+  8. ✅ Scan for "aI" → replace with "AI"
+  9. ✅ Remove banned phrases: "seamlessly", "leverage", "cutting-edge"
 
 *** OUTPUT FORMAT ***
 
-Please separate the generated content into the output fields and ensure all required output fields are generated.
+⚠️ CRITICAL: This section shows REAL CONTENT EXAMPLES, not placeholder instructions.
+
+Study these examples carefully - this is EXACTLY how your output should look.
 
 *** IMPORTANT OUTPUT RULES ***
 
-- ENSURE correct JSON output format.
-- JSON must be valid and minified (no line breaks inside values).
-- No extra keys, comments or process explanations.
+- ENSURE correct JSON output format
+- JSON must be valid and minified (no line breaks inside values)
+- No extra keys, comments, or process explanations
+- **WRITE NATURAL PARAGRAPHS**: 3-5 sentences per <p> tag, 60-100 words each
+- **USE PROPER LISTS**: When comparing features/tools, use <ul><li> with full descriptions
+- **NO STANDALONE LABELS**: Never write "<p><strong>Label:</strong> [N]</p>"
 
-Valid JSON only:
+Valid JSON with REAL CONTENT EXAMPLES:
 
 ```json
 {{
-  "Headline": "Concise, eye-catching headline that states the main topic and includes the primary keyword",
-  "Subtitle": "Optional sub-headline that adds context or a fresh angle",
-  "Teaser": "2-3 sentence hook that highlights a pain point or benefit and invites readers to continue",
-  "Direct_Answer": "45-55 word featured snippet with [1] citation embedded naturally",
-  "Intro": "Brief opening paragraph + key takeaways bullet list (use <ul>)",
-  "Meta_Title": "SEO-optimized title with the primary keyword",
-  "Meta_Description": "SEO description summarising the benefit and including a CTA",
-  "section_01_title": "Logical Section 01 Heading (H2)",
-  "section_01_content": "HTML content for Section 01. Separate the article logically; wrap each paragraph in <p>. Citations embedded in sentences, never standalone.",
-  "section_02_title": "Logical Section 02 Heading",
-  "section_02_content": "",
+  "Headline": "AI Code Tools 2025: Speed vs Security Trade-offs",
+  "Subtitle": "How 84% of developers balance 55% productivity gains with 45% vulnerability rates",
+  "Teaser": "GitHub Copilot writes 41% of all code in 2025, but security teams warn of critical flaws. The question isn't whether to adopt AI—it's how to do so without compromising quality.",
+  "Direct_Answer": "The leading AI code generation tools in 2025—GitHub Copilot, Amazon Q Developer, and Tabnine—collectively increase developer velocity by up to 55% <a href=\"#source-1\" class=\"citation\">according to GitHub research</a> while requiring strict governance frameworks to mitigate the 45% vulnerability rate in AI-generated code <a href=\"#source-2\" class=\"citation\">per NIST security study</a>.",
+  "Intro": "<p>In late 2024, a senior engineer at a fintech firm watched an autonomous agent refactor a legacy codebase in hours—a task estimated to take weeks. This isn't science fiction; it's the new baseline for software engineering. As we enter 2025, 84% of developers integrate AI into daily workflows <a href=\"#source-1\" class=\"citation\">according to Stack Overflow</a>, but this speed introduces a paradox: we're building faster while potentially creating technical debt at scale.</p>",
+  "Meta_Title": "Best AI Coding Tools 2025: Copilot vs Q vs Tabnine",
+  "Meta_Description": "Compare GitHub Copilot, Amazon Q, and Tabnine. See which AI tool delivers 55% faster coding with enterprise security.",
+  "section_01_title": "What is Driving the AI Coding Revolution in 2025?",
+  "section_01_content": "<p>The landscape of software development has undergone a radical transformation, with AI code generation tools now accounting for 41% of all code written globally—a staggering increase from just 12% in 2023 [1]. This surge is driven by enterprises racing to reduce operational costs in a market projected to reach $30.1 billion by 2032 [2]. However, adoption has outpaced governance, creating a trust gap where 76% of developers use these tools daily, yet only 43% trust their accuracy [3]. This disconnect reveals the central challenge of 2025: balancing velocity with quality control.</p><p>Leading organizations are moving beyond simple autocomplete to full agentic workflows where AI manages complex refactoring autonomously [4]. Tools can now upgrade entire legacy applications with minimal human intervention—impossible just two years ago [5]. Yet this automation introduces a productivity paradox: time saved writing boilerplate is often lost debugging subtle AI-generated logic errors [6]. Successful teams treat AI as a force multiplier requiring disciplined oversight, not an autonomous replacement for engineering judgment.</p>",
+  "section_02_title": "How Do Leading AI Code Tools Compare?",
+  "section_02_content": "<p>The market has consolidated around three dominant platforms, each serving distinct enterprise needs. GitHub Copilot leads with 41.9% market share through deep VS Code integration, while Amazon Q Developer dominates AWS-native environments with autonomous migration capabilities [1][2]. Tabnine captures security-conscious organizations requiring air-gapped deployments that prevent data leakage [3]. Understanding these differences is critical for strategic tool selection.</p><ul><li><strong>GitHub Copilot:</strong> Delivers 55% faster task completion through VS Code integration, with Workspace feature managing multi-file contexts via natural language [4][5]</li><li><strong>Amazon Q Developer:</strong> Specializes in autonomous Java version upgrades (Java 8 to 17), saving Amazon internally 4,500 developer years and $260M across 30,000 applications in 2024-2025 [6][7]</li><li><strong>Tabnine:</strong> Offers air-gapped deployment with zero cloud uploads, achieving 32% productivity gains at Tesco while maintaining strict data privacy [8][9]</li></ul><p>Real-world implementations validate these capabilities. Shopify accelerated pull request completion by 40% within 90 days of deploying Copilot across their 500-person engineering team in Q2 2024, attributing success to reduced boilerplate generation that previously consumed 30% of sprint capacity [10][11]. This demonstrates that tool selection must align with specific organizational constraints rather than following market hype.</p>",
   "section_03_title": "",
   "section_03_content": "",
-  "section_04_title": "",
-  "section_04_content": "",
-  "section_05_title": "",
-  "section_05_content": "",
-  "section_06_title": "",
-  "section_06_content": "",
-  "section_07_title": "",
-  "section_07_content": "",
-  "section_08_title": "",
-  "section_08_content": "",
-  "section_09_title": "",
-  "section_09_content": "",
-  "key_takeaway_01": "Key point or insight #1 (1 sentence). Leave unused takeaways blank.",
-  "key_takeaway_02": "",
-  "key_takeaway_03": "",
-  "paa_01_question": "People also ask question #1",
-  "paa_01_answer": "Concise answer to question #1.",
-  "paa_02_question": "",
-  "paa_02_answer": "",
-  "paa_03_question": "",
-  "paa_03_answer": "",
-  "paa_04_question": "",
-  "paa_04_answer": "",
-  "faq_01_question": "Main FAQ question #1",
-  "faq_01_answer": "Clear, concise answer.",
-  "faq_02_question": "",
-  "faq_02_answer": "",
-  "faq_03_question": "",
-  "faq_03_answer": "",
-  "faq_04_question": "",
-  "faq_04_answer": "",
-  "faq_05_question": "",
-  "faq_05_answer": "",
-  "faq_06_question": "",
-  "faq_06_answer": "",
-  "Sources": "[1]: https://… – 8-15 word note. List one source per line; leave blank until populated. LIMIT TO 20 sources",
-  "Search Queries": "Q1: keyword … List one query per line; leave blank until populated."
+  ...
 }}
 ```
+
+📋 **KEY PATTERNS TO FOLLOW:**
+
+1. **Feature Comparisons** - Use lead-in paragraph + `<ul>` list:
+   ```html
+   <p>Narrative paragraph introducing comparison [1][2].</p>
+   <ul>
+     <li><strong>Tool A:</strong> Full description with metrics [3][4]</li>
+     <li><strong>Tool B:</strong> Full description with metrics [5][6]</li>
+   </ul>
+   ```
+
+2. **Case Studies** - Embed in narrative paragraphs:
+   ```html
+   <p>Context sentence. Company X achieved Y% improvement by doing Z in Q1 2025, 
+   with detailed explanation of impact and specific metrics [1][2]. Additional 
+   context about why this matters for the industry.</p>
+   ```
+
+3. **Every Paragraph** - 60-100 words, 3-5 sentences:
+   ```html
+   <p>Sentence 1 introducing concept [1]. Sentence 2 with data/example [2]. 
+   Sentence 3 explaining impact [3]. Sentence 4 adding context or bridging 
+   to next idea.</p>
+   ```
+
+VALIDATION RULES (Output will be REJECTED if violated):
+1. ❌ Any "<p><strong>Label:</strong> [N]</p>" pattern → REJECTED
+2. ❌ Any paragraph under 60 words → REJECTED  
+3. ❌ Any case study without Company + Metric + Timeframe → REJECTED
+4. ❌ Any one-sentence paragraphs → REJECTED
+5. ✅ Must have 2+ case studies (30+ words each)
+6. ✅ Must have 60-100 word cohesive paragraphs throughout
+7. ✅ Use <ul><li> for feature lists, NEVER standalone <p> labels
 
 ALWAYS AT ANY TIMES STRICTLY OUTPUT IN THE JSON FORMAT. No extra keys or commentary."""
 
