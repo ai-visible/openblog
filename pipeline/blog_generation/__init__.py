@@ -1,8 +1,9 @@
-"""All 12 workflow stages (0-11)."""
+"""All 13 workflow stages (0-12) including Stage 2b."""
 
 from .stage_00_data_fetch import DataFetchStage
 from .stage_01_prompt_build import PromptBuildStage
 from .stage_02_gemini_call import GeminiCallStage
+from .stage_02b_quality_refinement import QualityRefinementStage
 from .stage_03_extraction import ExtractionStage
 from .stage_04_citations import CitationsStage
 from .stage_05_internal_links import InternalLinksStage

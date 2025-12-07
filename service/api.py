@@ -54,6 +54,15 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# Rate limiting setup
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -1868,6 +1877,61 @@ class ContentRefreshRequest(BaseModel):
     instructions: List[str] = Field(..., description="List of instructions/prompts for what to change (e.g., 'Update statistics to 2025', 'Make tone more professional')")
     target_sections: Optional[List[int]] = Field(None, description="Optional: List of section indices to update (0-based). If not provided, updates all sections")
     output_format: str = Field("json", description="Output format: 'json', 'html', or 'markdown'")
+    include_diff: bool = Field(False, description="If True, includes diff showing changes made (unified + HTML format)")
+    
+    @field_validator('content')
+    @classmethod
+    def validate_content(cls, v):
+        """Ensure content is not empty."""
+        if not v or not v.strip():
+            raise ValueError("Content cannot be empty")
+        if len(v) > 1_000_000:  # 1MB limit
+            raise ValueError("Content too large (max 1MB)")
+        return v
+    
+    @field_validator('instructions')
+    @classmethod
+    def validate_instructions(cls, v):
+        """Ensure at least one instruction is provided."""
+        if not v or len(v) == 0:
+            raise ValueError("At least one instruction is required")
+        if len(v) > 10:
+            raise ValueError("Too many instructions (max 10)")
+        for instruction in v:
+            if not instruction or not instruction.strip():
+                raise ValueError("Instructions cannot be empty")
+        return v
+    
+    @field_validator('content_format')
+    @classmethod
+    def validate_content_format(cls, v):
+        """Validate content format is one of the allowed values."""
+        if v and v.lower() not in ['html', 'markdown', 'json', 'text']:
+            raise ValueError("content_format must be one of: html, markdown, json, text")
+        return v.lower() if v else None
+    
+    @field_validator('output_format')
+    @classmethod
+    def validate_output_format(cls, v):
+        """Validate output format is one of the allowed values."""
+        if v.lower() not in ['json', 'html', 'markdown']:
+            raise ValueError("output_format must be one of: json, html, markdown")
+        return v.lower()
+    
+    @field_validator('target_sections')
+    @classmethod
+    def validate_target_sections(cls, v):
+        """Validate section indices are valid."""
+        if v is not None:
+            if len(v) == 0:
+                raise ValueError("target_sections cannot be empty list (use None for all sections)")
+            if len(v) > 50:
+                raise ValueError("Too many target sections (max 50)")
+            if any(idx < 0 for idx in v):
+                raise ValueError("Section indices must be non-negative")
+            if len(v) != len(set(v)):
+                raise ValueError("Duplicate section indices are not allowed")
+        return v
 
 
 class ContentRefreshResponse(BaseModel):
@@ -1877,13 +1941,21 @@ class ContentRefreshResponse(BaseModel):
     refreshed_html: Optional[str] = Field(None, description="Refreshed content as HTML")
     refreshed_markdown: Optional[str] = Field(None, description="Refreshed content as Markdown")
     sections_updated: int = Field(0, description="Number of sections updated")
+    diff_text: Optional[str] = Field(None, description="Unified diff showing changes (if include_diff=True)")
+    diff_html: Optional[str] = Field(None, description="HTML diff showing changes with highlighting (if include_diff=True)")
     error: Optional[str] = Field(None, description="Error message if failed")
 
 
 @app.post("/refresh", response_model=ContentRefreshResponse)
+@limiter.limit("10/minute")
 async def refresh_content(request: ContentRefreshRequest):
     """
-    Refresh/correct existing content using prompts.
+    Refresh/correct existing content using prompts with structured JSON output (v2.0).
+    
+    RATE LIMIT: 10 requests per minute per IP address.
+    
+    NEW in v2.0: Uses structured JSON output to prevent hallucinations (same fix as v4.0 blog generation).
+    No more "You can aI code" or other context loss bugs.
     
     Similar to ChatGPT Canvas - updates specific parts without full rewrite.
     
@@ -1893,31 +1965,84 @@ async def refresh_content(request: ContentRefreshRequest):
     - JSON: Structured blog format (with sections)
     - Plain text: Auto-detects sections by paragraphs
     
-    Example:
+    Example 1: Update Statistics with Diff Preview
     ```json
     {
-      "content": "<h1>Title</h1><h2>Section 1</h2><p>Old content...</p>",
+      "content": "<h1>Tech Trends</h1><h2>AI Adoption</h2><p>In 2023, 45% of companies used AI.</p>",
       "content_format": "html",
-      "instructions": [
-        "Update statistics to 2025",
-        "Make tone more professional",
-        "Add recent examples"
-      ],
-      "target_sections": [0, 1],
-      "output_format": "html"
+      "instructions": ["Update all statistics to 2025 data"],
+      "target_sections": [0],
+      "output_format": "html",
+      "include_diff": true
     }
     ```
     
-    This will:
-    1. Parse the HTML content into sections
-    2. Update only sections 0 and 1 based on instructions
-    3. Keep other sections unchanged
-    4. Return refreshed content in HTML format
+    Example 2: Make Tone More Professional (Markdown)
+    ```json
+    {
+      "content": "# My Blog\\n\\n## Intro\\n\\nThis is kinda cool!",
+      "content_format": "markdown",
+      "instructions": ["Make tone more professional", "Expand with technical details"],
+      "output_format": "markdown"
+    }
+    ```
+    
+    Example 3: Selective Section Updates (JSON)
+    ```json
+    {
+      "content": "{\\"sections\\": [{\\"heading\\": \\"Intro\\", \\"content\\": \\"Old text\\"}]}",
+      "content_format": "json",
+      "instructions": ["Add 2025 trends", "Include examples"],
+      "target_sections": [0, 2],
+      "output_format": "json"
+    }
+    ```
+    
+    How It Works:
+    1. Parse the input content into sections (auto-detects format if not specified)
+    2. Update only the target sections based on instructions
+    3. Keep other sections unchanged (preserves original exactly)
+    4. Return refreshed content in requested format
+    5. Optionally generate diff showing changes
+    
+    Returns:
+        ContentRefreshResponse with:
+        - refreshed_content: Structured content (always included)
+        - refreshed_html: HTML output (if output_format='html')
+        - refreshed_markdown: Markdown output (if output_format='markdown')
+        - sections_updated: Count of updated sections
+        - diff_text: Unified diff (if include_diff=True)
+        - diff_html: HTML diff with highlighting (if include_diff=True)
+        
+    Error Codes:
+        200: Success - Content refreshed successfully
+        400: Bad Request - Invalid request parameters (e.g., empty content, invalid format)
+        422: Unprocessable Entity - Validation errors (e.g., malformed JSON, empty instructions)
+        429: Too Many Requests - Rate limit exceeded (max 10/minute per IP)
+        500: Internal Server Error - Missing API key or Gemini API failure
+        503: Service Unavailable - Temporary service issues
+    
+    Validation Rules:
+        - content: Must not be empty, max 1MB
+        - instructions: At least 1 required, max 10
+        - content_format: Must be 'html', 'markdown', 'json', or 'text' (or None for auto-detect)
+        - output_format: Must be 'json', 'html', or 'markdown'
+        - target_sections: No duplicates, all indices >= 0
+    
+    Best Practices:
+        - Use specific instructions (e.g., "Update Q3 2024 stats to Q4 2024" instead of "update stats")
+        - Request diff preview (include_diff=True) to review changes before committing
+        - Target specific sections to avoid unnecessary API calls
+        - Use structured JSON input format for best results
+        - Handle rate limiting gracefully (429 errors)
     """
     try:
         # Parse content into structured format
         parser = ContentParser()
         parsed_content = parser.parse(request.content, request.content_format)
+        
+        # Store original content for diff (if requested)
+        original_content = parsed_content.copy() if request.include_diff else None
         
         # Initialize Gemini client for refresh
         api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_GEMINI_API_KEY")
@@ -1947,6 +2072,12 @@ async def refresh_content(request: ContentRefreshRequest):
             "sections_updated": sections_updated,
         }
         
+        # Generate diff if requested
+        if request.include_diff and original_content:
+            diff_text, diff_html = refresher.generate_diff(original_content, refreshed_content)
+            response_data["diff_text"] = diff_text
+            response_data["diff_html"] = diff_html
+        
         if request.output_format == "html":
             response_data["refreshed_html"] = refresher.to_html(refreshed_content)
         elif request.output_format == "markdown":
@@ -1954,12 +2085,26 @@ async def refresh_content(request: ContentRefreshRequest):
         
         return ContentRefreshResponse(**response_data)
         
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 500 for missing API key)
+        raise
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parsing error in content refresh: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid JSON format in content: {str(e)}"
+        )
+    except ValueError as e:
+        logger.error(f"Validation error in content refresh: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid request: {str(e)}"
+        )
     except Exception as e:
         logger.error(f"Content refresh error: {e}", exc_info=True)
-        return ContentRefreshResponse(
-            success=False,
-            error=str(e),
-            sections_updated=0,
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
         )
 
 

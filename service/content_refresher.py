@@ -2,6 +2,8 @@
 Content Refresher - Refresh/correct existing content using prompts
 Similar to ChatGPT Canvas - updates specific parts without full rewrite
 
+v2.0: Now uses structured JSON output to prevent hallucinations (same fix as v4.0 blog generation)
+
 Supports flexible input formats:
 - HTML
 - Markdown
@@ -256,7 +258,12 @@ class ContentRefresher:
         section: Dict[str, Any],
         instructions: List[str],
     ) -> Dict[str, Any]:
-        """Refresh a single section based on instructions."""
+        """
+        Refresh a single section based on instructions.
+        
+        Uses structured JSON output (response_schema) to prevent hallucinations.
+        This is the same fix applied to blog generation in v4.0.
+        """
         heading = section.get('heading', '')
         content_text = section.get('content', '')
         
@@ -274,34 +281,75 @@ Instructions:
 {instructions_text}
 
 Requirements:
-- Keep the same heading
+- Keep the same heading (exactly as provided)
 - Maintain the same writing style and tone
 - Only update parts that need changes based on instructions
 - Keep unchanged parts exactly as they are
 - Ensure the updated content flows naturally
 - Don't add new information unless instructed
+- Provide a brief change_summary explaining what you updated
 
-Return ONLY the updated content text (no heading, no markdown, just the paragraph text):"""
+You MUST respond with strict JSON matching this structure:
+{{
+  "heading": "{heading}",
+  "content": "...updated content here (may include HTML)...",
+  "change_summary": "...what changed (e.g., 'Updated statistics to 2025')..."
+}}
+
+CRITICAL: Output ONLY valid JSON. No other text or explanation."""
 
         try:
-            # Generate refreshed content
-            refreshed_text = await self.gemini_client.generate_content(
-                prompt,
-                enable_tools=False,  # No search needed for refresh
+            # Import build_refresh_response_schema
+            from pipeline.models.gemini_client import build_refresh_response_schema
+            
+            # Build response schema for single section
+            # We'll use a simplified schema since we're refreshing one section at a time
+            import google.genai as genai
+            from google.genai import types
+            
+            refreshed_section_schema = types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "heading": types.Schema(
+                        type=types.Type.STRING, 
+                        description="Section heading (plain text, NO HTML)"
+                    ),
+                    "content": types.Schema(
+                        type=types.Type.STRING,
+                        description="Updated section content (may include HTML like <p>, <ul>, <strong>)"
+                    ),
+                    "change_summary": types.Schema(
+                        type=types.Type.STRING,
+                        description="Brief description of changes made"
+                    ),
+                },
+                required=["heading", "content", "change_summary"]
             )
             
-            # Clean up response (remove any markdown formatting)
-            refreshed_text = refreshed_text.strip()
-            refreshed_text = re.sub(r'^```[a-z]*\n', '', refreshed_text)
-            refreshed_text = re.sub(r'\n```$', '', refreshed_text)
-            refreshed_text = refreshed_text.strip()
+            # Generate refreshed content with structured output
+            response = await self.gemini_client.generate_content(
+                prompt,
+                enable_tools=False,  # No search needed for refresh
+                response_schema=refreshed_section_schema,
+                response_mime_type="application/json"
+            )
+            
+            # Parse JSON directly (no regex cleanup needed with structured output!)
+            refreshed_data = json.loads(response)
+            
+            logger.info(f"✅ Refreshed section '{heading}' - Change: {refreshed_data.get('change_summary', 'N/A')}")
             
             return {
-                'heading': heading,
-                'content': refreshed_text,
+                'heading': refreshed_data.get('heading', heading),
+                'content': refreshed_data.get('content', content_text),
+                'change_summary': refreshed_data.get('change_summary', ''),
             }
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ JSON parse error in refresh (structured output failed): {e}")
+            # Fallback to original
+            return section
         except Exception as e:
-            logger.error(f"Error refreshing section: {e}")
+            logger.error(f"❌ Error refreshing section: {e}")
             # Return original on error
             return section
     
@@ -375,4 +423,104 @@ Return ONLY the updated meta description (no quotes, no explanation):"""
     def to_json(self, content: Dict[str, Any]) -> str:
         """Convert refreshed content to JSON."""
         return json.dumps(content, indent=2, ensure_ascii=False)
+    
+    def generate_diff(self, original_content: Dict[str, Any], refreshed_content: Dict[str, Any]) -> Tuple[str, str]:
+        """
+        Generate diff between original and refreshed content.
+        
+        Returns:
+            Tuple of (unified_diff_text, html_diff)
+        """
+        import difflib
+        
+        # Convert both to readable text for comparison
+        original_text = self._content_to_text(original_content)
+        refreshed_text = self._content_to_text(refreshed_content)
+        
+        # Generate unified diff
+        original_lines = original_text.splitlines(keepends=True)
+        refreshed_lines = refreshed_text.splitlines(keepends=True)
+        
+        unified_diff = ''.join(difflib.unified_diff(
+            original_lines,
+            refreshed_lines,
+            fromfile='original',
+            tofile='refreshed',
+            lineterm='',
+        ))
+        
+        # Generate HTML diff
+        html_diff = self._generate_html_diff(original_lines, refreshed_lines)
+        
+        return unified_diff, html_diff
+    
+    def _content_to_text(self, content: Dict[str, Any]) -> str:
+        """Convert structured content to plain text for diffing."""
+        text_parts = []
+        
+        if content.get('headline'):
+            text_parts.append(f"# {content['headline']}\n")
+        
+        if content.get('meta_description'):
+            text_parts.append(f"Meta: {content['meta_description']}\n")
+        
+        for section in content.get('sections', []):
+            heading = section.get('heading', '')
+            content_text = section.get('content', '')
+            
+            if heading:
+                text_parts.append(f"\n## {heading}\n")
+            text_parts.append(f"{content_text}\n")
+        
+        return '\n'.join(text_parts)
+    
+    def _generate_html_diff(self, original_lines: List[str], refreshed_lines: List[str]) -> str:
+        """Generate HTML diff with highlighting."""
+        import difflib
+        
+        differ = difflib.HtmlDiff(wrapcolumn=80)
+        html_diff = differ.make_table(
+            original_lines,
+            refreshed_lines,
+            fromdesc='Original',
+            todesc='Refreshed',
+            context=True,  # Show context lines
+            numlines=3,    # 3 lines of context
+        )
+        
+        # Add custom styling for better readability
+        custom_style = """
+        <style>
+            .diff {
+                font-family: monospace;
+                border-collapse: collapse;
+                width: 100%;
+            }
+            .diff td {
+                padding: 4px;
+                vertical-align: top;
+            }
+            .diff_header {
+                background-color: #f0f0f0;
+                font-weight: bold;
+            }
+            .diff_next {
+                background-color: #f0f0f0;
+            }
+            .diff_add {
+                background-color: #e6ffed;
+                color: #24292e;
+            }
+            .diff_chg {
+                background-color: #fff8c5;
+                color: #24292e;
+            }
+            .diff_sub {
+                background-color: #ffeef0;
+                color: #24292e;
+            }
+        </style>
+        """
+        
+        return custom_style + html_diff
 

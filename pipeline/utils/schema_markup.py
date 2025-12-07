@@ -30,13 +30,33 @@ def generate_article_schema(
     Returns:
         Dict representing JSON-LD Article schema
     """
+    # Helper to strip HTML and remove AI markers (em dashes, etc.)
+    def _clean_text(text: str) -> str:
+        """Strip HTML, humanize text (remove em dashes), and strip citation markers."""
+        if not text:
+            return ""
+        # Strip HTML first
+        cleaned = _strip_html(text)
+        # Remove em dashes (replace with commas)
+        cleaned = cleaned.replace("—", ", ")
+        # Remove robotic phrases
+        cleaned = cleaned.replace("Here's how ", "")
+        cleaned = cleaned.replace("Here's what ", "")
+        cleaned = cleaned.replace("Key points: ", "")
+        # Strip citation markers [N] - CRITICAL FIX
+        import re
+        cleaned = re.sub(r'\[\d+\]', '', cleaned)
+        # Clean up double spaces
+        cleaned = re.sub(r'\s+', ' ', cleaned)
+        return cleaned.strip()
+    
     # Extract text content for description
-    intro_text = _strip_html(output.Intro)
-    description = intro_text[:160] if intro_text else output.Meta_Description
+    intro_text = _clean_text(output.Intro)
+    description = intro_text[:160] if intro_text else _clean_text(output.Meta_Description)
     
     # Use direct answer for description if available (AEO optimization)
     if output.Direct_Answer:
-        direct_answer_text = _strip_html(output.Direct_Answer)
+        direct_answer_text = _clean_text(output.Direct_Answer)
         if direct_answer_text:
             description = direct_answer_text[:160]
     
@@ -46,7 +66,7 @@ def generate_article_schema(
     schema = {
         "@context": "https://schema.org",
         "@type": "Article",
-        "headline": output.Headline,
+        "headline": _clean_text(output.Headline),  # Clean headline (no HTML, no em dashes)
         "description": description,
         "datePublished": datetime.now().isoformat(),
         "dateModified": datetime.now().isoformat(),
@@ -70,11 +90,11 @@ def generate_article_schema(
     
     # Add subtitle
     if output.Subtitle:
-        schema["alternativeHeadline"] = output.Subtitle
+        schema["alternativeHeadline"] = _clean_text(output.Subtitle)
     
     # Add direct answer as acceptedAnswer for AEO (if available)
     if output.Direct_Answer:
-        direct_answer_text = _strip_html(output.Direct_Answer)
+        direct_answer_text = _clean_text(output.Direct_Answer)
         if direct_answer_text:
             schema["acceptedAnswer"] = {
                 "@type": "Answer",
@@ -83,7 +103,7 @@ def generate_article_schema(
     
     # Add article body
     article_body = output.Intro + " " + _get_all_section_content(output)
-    schema["articleBody"] = _strip_html(article_body)
+    schema["articleBody"] = _clean_text(article_body)
     
     # Add ImageObject if image URL provided
     if output.image_url:

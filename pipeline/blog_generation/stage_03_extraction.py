@@ -26,6 +26,7 @@ Retry logic:
 
 import logging
 import json
+import re
 from typing import Dict, Any, Optional
 
 from ..core import ExecutionContext, Stage
@@ -83,14 +84,14 @@ class ExtractionStage(Stage):
 
         logger.debug(f"Raw article size: {len(context.raw_article)} characters")
 
-        # Extract JSON from raw response
-        logger.info("Extracting JSON from raw article...")
+        # Extract JSON from raw response (direct JSON if response_schema was used)
+        logger.info("Parsing JSON from raw article...")
         try:
-            json_data = self.client.extract_json_from_response(context.raw_article)
-            logger.info("✅ JSON extraction successful")
+            json_data = json.loads(context.raw_article)
+            logger.info("✅ JSON parsing successful")
         except Exception as e:
-            logger.error(f"❌ JSON extraction failed: {e}")
-            raise ValueError(f"Failed to extract JSON from raw article: {e}")
+            logger.error(f"❌ JSON parsing failed: {e}")
+            raise ValueError(f"Failed to parse JSON from raw article: {e}")
 
         logger.debug(f"   JSON keys: {list(json_data.keys())[:10]}...")
 
@@ -119,6 +120,7 @@ class ExtractionStage(Stage):
         - Missing required fields (fills with defaults)
         - Validation errors (logs warnings, continues)
         - Field normalization (strip whitespace)
+        - HTML stripping from title fields (CRITICAL: titles must be plain text)
 
         Args:
             json_data: Extracted JSON dictionary
@@ -130,16 +132,41 @@ class ExtractionStage(Stage):
             ValueError: If validation fails
         """
         logger.debug("Parsing JSON data...")
+        
+        # Define fields that should NEVER contain HTML (must be plain text)
+        PLAIN_TEXT_FIELDS = {
+            'Headline', 'Subtitle', 'Meta_Title', 'Meta_Description',
+            'section_01_title', 'section_02_title', 'section_03_title',
+            'section_04_title', 'section_05_title', 'section_06_title',
+            'section_07_title', 'section_08_title', 'section_09_title',
+            'faq_01_question', 'faq_02_question', 'faq_03_question',
+            'faq_04_question', 'faq_05_question', 'faq_06_question',
+            'faq_07_question', 'faq_08_question', 'faq_09_question',
+            'faq_10_question',
+            'paa_01_question', 'paa_02_question', 'paa_03_question',
+            'paa_04_question', 'paa_05_question',
+            'takeaway_01', 'takeaway_02', 'takeaway_03',
+            'takeaway_04', 'takeaway_05',
+        }
 
-        # Normalize data: ensure all values are strings (Gemini may return mixed types)
+        # Normalize data: ensure all values are strings EXCEPT lists/dicts (for tables, etc.)
         normalized = {}
         for key, value in json_data.items():
             if value is None:
                 normalized[key] = ""
             elif isinstance(value, str):
-                normalized[key] = value.strip()
+                cleaned = value.strip()
+                # CRITICAL FIX: Strip HTML from title/metadata fields
+                if key in PLAIN_TEXT_FIELDS:
+                    cleaned = self._strip_html(cleaned)
+                    if cleaned != value.strip():
+                        logger.warning(f"⚠️  Stripped HTML from {key}: '{value.strip()}' → '{cleaned}'")
+                normalized[key] = cleaned
+            elif isinstance(value, (list, dict)):
+                # CRITICAL FIX: Preserve structured data (tables, etc.) - do NOT stringify
+                normalized[key] = value
             else:
-                # Convert non-strings to string representation
+                # Convert non-strings to string representation (numbers, booleans, etc.)
                 normalized[key] = str(value).strip()
 
         logger.debug(f"Normalized {len(normalized)} fields")
@@ -265,6 +292,42 @@ class ExtractionStage(Stage):
         has_sources = bool(article.Sources and article.Sources.strip())
         has_queries = bool(article.Search_Queries and article.Search_Queries.strip())
         logger.debug(f"  Citations: Sources={has_sources}, Queries={has_queries}")
+    
+    def _strip_html(self, text: str) -> str:
+        """
+        Strip ALL HTML tags from text, leaving only plain text.
+        
+        Used for title fields, metadata, and questions where HTML is forbidden.
+        
+        Args:
+            text: Input text that may contain HTML
+        
+        Returns:
+            Plain text with all HTML tags removed
+        
+        Examples:
+            "<p>Hello World</p>" → "Hello World"
+            "What is <p>AI Coding</p>?" → "What is AI Coding?"
+            "<strong>Bold</strong> text" → "Bold text"
+        """
+        if not text:
+            return text
+        
+        # Remove all HTML tags
+        cleaned = re.sub(r'<[^>]+>', '', text)
+        
+        # Clean up any leftover HTML entities
+        cleaned = cleaned.replace('&nbsp;', ' ')
+        cleaned = cleaned.replace('&lt;', '<')
+        cleaned = cleaned.replace('&gt;', '>')
+        cleaned = cleaned.replace('&amp;', '&')
+        cleaned = cleaned.replace('&quot;', '"')
+        cleaned = cleaned.replace('&#39;', "'")
+        
+        # Clean up extra whitespace
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        
+        return cleaned
 
     def __repr__(self) -> str:
         """String representation."""

@@ -144,8 +144,9 @@ class WorkflowEngine:
         self.logger.info(f"Total execution time target: < 105 seconds")
 
         try:
-            # Sequential: Stages 0-3
+            # Sequential: Stages 0-3 (with 2b quality refinement AFTER extraction)
             context = await self._execute_sequential(context, [0, 1, 2, 3])
+            context = await self._execute_stage_2b_conditional(context)
 
             # Parallel: Stages 4-9
             context = await self._execute_parallel(context, [4, 5, 6, 7, 8, 9])
@@ -219,6 +220,50 @@ class WorkflowEngine:
                 # Stage 0, 2, 10, 11 are critical - don't continue
                 if stage_num in [0, 2, 10, 11]:
                     raise
+
+        return context
+
+    async def _execute_stage_2b_conditional(
+        self, context: ExecutionContext
+    ) -> ExecutionContext:
+        """
+        Conditionally execute Stage 2b (Quality Refinement).
+        
+        Only runs if quality issues are detected in Gemini output.
+        This is inserted AFTER Stage 3 (Extraction) and BEFORE Stage 4-9 (Parallel).
+        
+        Args:
+            context: Current execution context (with structured_data from Stage 3)
+        
+        Returns:
+            Updated execution context (potentially with refined structured_data)
+        """
+        from ..blog_generation.stage_02b_quality_refinement import QualityRefinementStage
+        
+        stage_2b = QualityRefinementStage()
+        self.logger.info(f"Executing conditional {stage_2b}")
+        
+        try:
+            # Notify progress start
+            if self.progress_callback:
+                self.progress_callback("stage_02b", "2b", False)
+            
+            start_time = time.time()
+            context = await stage_2b.execute(context)
+            duration = time.time() - start_time
+            
+            context.add_execution_time("stage_02b", duration)
+            self.logger.info(f"✅ {stage_2b} completed in {duration:.2f}s")
+            
+            # Notify progress completion
+            if self.progress_callback:
+                self.progress_callback("stage_02b", "2b", True)
+        
+        except Exception as e:
+            self.logger.warning(f"⚠️  {stage_2b} failed: {e}", exc_info=True)
+            context.add_error("stage_02b", e)
+            # Non-critical - continue with original content
+            self.logger.info("Continuing with original Gemini output (no refinement)")
 
         return context
 

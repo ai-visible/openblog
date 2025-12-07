@@ -282,14 +282,16 @@ class QualityChecker:
         # Self-closing tags don't need close tag
         self_closing = {"br", "hr", "img", "input", "meta", "link"}
 
-        for tag in open_tags:
+        # CRITICAL FIX: Count each unique tag, not all tags
+        unique_tags = set(open_tags)
+        for tag in unique_tags:
             if tag.lower() not in self_closing:
-                close_count = close_tags.count(tag.lower())
-                open_count = open_tags.count(tag)
+                # Count case-insensitive
+                close_count = sum(1 for t in close_tags if t.lower() == tag.lower())
+                open_count = sum(1 for t in open_tags if t.lower() == tag.lower())
 
                 if close_count < open_count:
-                    issues.append(f"❌ Unclosed HTML tag: <{tag}>")
-                    break  # Just report once
+                    issues.append(f"❌ Unclosed HTML tag: <{tag}> (open: {open_count}, close: {close_count})")
 
         return issues
 

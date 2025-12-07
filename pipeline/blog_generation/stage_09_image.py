@@ -3,22 +3,29 @@ Stage 9: Image Generation
 
 Maps to v4.1 Phase 8, Steps 25-28: get-insights → image_empty? → execute_image_generation → store_image_in_blog
 
-Generates article header image via Replicate API with detailed prompts.
+Generates **3 article images** via Replicate API with detailed prompts:
+1. Hero image (from headline)
+2. Mid-article image (from sections 3-4)
+3. Bottom image (from sections 6-7)
 
 Input:
-  - ExecutionContext.structured_data (headline)
+  - ExecutionContext.structured_data (headline + section titles)
   - ExecutionContext.company_data (industry, description)
   - ExecutionContext.job_config (language)
 
 Output:
-  - ExecutionContext.parallel_results['image_url'] (CDN URL)
-  - ExecutionContext.parallel_results['image_alt_text'] (max 125 chars)
+  - ExecutionContext.parallel_results['image_url'] (Hero CDN URL)
+  - ExecutionContext.parallel_results['image_alt_text'] (Hero alt text)
+  - ExecutionContext.parallel_results['mid_image_url'] (Mid CDN URL)
+  - ExecutionContext.parallel_results['mid_image_alt'] (Mid alt text)
+  - ExecutionContext.parallel_results['bottom_image_url'] (Bottom CDN URL)
+  - ExecutionContext.parallel_results['bottom_image_alt'] (Bottom alt text)
 
 Process:
-1. Check if image_url already exists (conditional skip)
-2. Get image generation insights from headline + company info
-3. Call image generator (Replicate API)
-4. Generate alt text from headline
+1. Check if images already exist (conditional skip)
+2. Get image generation prompts from headline + section titles
+3. Call image generator 3 times (Hero, Mid, Bottom)
+4. Generate alt texts
 5. Store results in parallel_results
 """
 
@@ -40,10 +47,10 @@ class ImageStage(Stage):
     Stage 9: Image Generation.
 
     Handles:
-    - Conditional skip (if image already exists)
-    - Image prompt generation from headline + company info
-    - Replicate API integration
-    - Alt text generation
+    - Conditional skip (if images already exist)
+    - Image prompt generation from headline + section titles
+    - Replicate API integration (3x calls)
+    - Alt text generation (3x)
     - Error handling and retry logic
     """
 
@@ -56,9 +63,9 @@ class ImageStage(Stage):
         try:
             self.primary_generator = GoogleImagenClient()
             if not self.primary_generator.mock_mode:
-                logger.info("Using Google Imagen 4.0 for image generation")
+                logger.info("Using Imagen 4.0 for image generation (via Gemini SDK)")
             else:
-                logger.info("Google Imagen in mock mode, will use fallback")
+                logger.info("Imagen 4.0 in mock mode, will use fallback")
         except Exception as e:
             logger.warning(f"Google Imagen initialization failed: {e}")
             self.primary_generator = None
@@ -73,16 +80,20 @@ class ImageStage(Stage):
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:
         """
-        Execute Stage 9: Generate article image.
+        Execute Stage 9: Generate 3 article images.
 
         Input from context:
-        - structured_data: ArticleOutput with headline
+        - structured_data: ArticleOutput with headline + section titles
         - company_data: Company information
         - job_config: Job configuration with language
 
         Output to context:
-        - parallel_results['image_url']: Image CDN URL
-        - parallel_results['image_alt_text']: Alt text for image
+        - parallel_results['image_url']: Hero image CDN URL
+        - parallel_results['image_alt_text']: Hero alt text
+        - parallel_results['mid_image_url']: Mid-article image URL
+        - parallel_results['mid_image_alt']: Mid alt text
+        - parallel_results['bottom_image_url']: Bottom image URL
+        - parallel_results['bottom_image_alt']: Bottom alt text
 
         Args:
             context: ExecutionContext from parallel stages
@@ -90,50 +101,68 @@ class ImageStage(Stage):
         Returns:
             Updated context with parallel_results populated
         """
-        logger.info(f"Stage 9: {self.stage_name}")
+        logger.info(f"Stage 9: {self.stage_name} (3 images)")
 
         # Validate input
         if not context.structured_data:
             logger.warning("No structured_data available for image generation")
             context.parallel_results["image_url"] = ""
             context.parallel_results["image_alt_text"] = ""
-            return context
-
-        # Check if image already exists (conditional skip)
-        existing_image = getattr(context.structured_data, "image_url", None)
-        if existing_image and existing_image.strip():
-            logger.info(f"✅ Image already exists: {existing_image[:50]}...")
-            context.parallel_results["image_url"] = existing_image
-            # Generate alt text for existing image
-            alt_text = self._generate_alt_text(context.structured_data.Headline)
-            context.parallel_results["image_alt_text"] = alt_text
+            context.parallel_results["mid_image_url"] = ""
+            context.parallel_results["mid_image_alt"] = ""
+            context.parallel_results["bottom_image_url"] = ""
+            context.parallel_results["bottom_image_alt"] = ""
             return context
 
         headline = context.structured_data.Headline
-        logger.info(f"Generating image for: {headline}")
+        
+        # Extract section titles for mid and bottom images
+        mid_title = self._get_section_title(context.structured_data, [3, 4]) or headline
+        bottom_title = self._get_section_title(context.structured_data, [6, 7]) or headline
+        
+        logger.info(f"Generating 3 images:")
+        logger.info(f"  Hero: {headline[:50]}...")
+        logger.info(f"  Mid: {mid_title[:50]}...")
+        logger.info(f"  Bottom: {bottom_title[:50]}...")
 
-        # Step 1: Generate image prompt from headline + company data
-        image_prompt = generate_image_prompt(
+        # Generate image 1: Hero
+        hero_prompt = generate_image_prompt(
             headline=headline,
             company_data=context.company_data,
             job_config=context.job_config,
         )
-        logger.debug(f"Image prompt generated ({len(image_prompt)} chars)")
+        hero_url = await self._generate_image_with_retry(hero_prompt, context)
+        hero_alt = self._generate_alt_text(headline)
+        
+        context.parallel_results["image_url"] = hero_url or ""
+        context.parallel_results["image_alt_text"] = hero_alt
 
-        # Step 2: Generate image with comprehensive error handling
-        image_url = await self._generate_image_with_retry(image_prompt, context)
+        # Generate image 2: Mid-article
+        mid_prompt = generate_image_prompt(
+            headline=mid_title,
+            company_data=context.company_data,
+            job_config=context.job_config,
+        )
+        mid_url = await self._generate_image_with_retry(mid_prompt, context)
+        mid_alt = self._generate_alt_text(mid_title)
+        
+        context.parallel_results["mid_image_url"] = mid_url or ""
+        context.parallel_results["mid_image_alt"] = mid_alt
 
-        # Step 3: Generate alt text
-        alt_text = self._generate_alt_text(headline)
+        # Generate image 3: Bottom
+        bottom_prompt = generate_image_prompt(
+            headline=bottom_title,
+            company_data=context.company_data,
+            job_config=context.job_config,
+        )
+        bottom_url = await self._generate_image_with_retry(bottom_prompt, context)
+        bottom_alt = self._generate_alt_text(bottom_title)
+        
+        context.parallel_results["bottom_image_url"] = bottom_url or ""
+        context.parallel_results["bottom_image_alt"] = bottom_alt
 
-        # Store results in context
-        context.parallel_results["image_url"] = image_url or ""
-        context.parallel_results["image_alt_text"] = alt_text
-
-        if image_url:
-            logger.info(f"✅ Image generated successfully")
-        else:
-            logger.warning("⚠️  Image generation failed, continuing without image")
+        images_generated = sum([bool(hero_url), bool(mid_url), bool(bottom_url)])
+        logger.info(f"✅ Generated {images_generated}/3 images successfully")
 
         return context
 
@@ -175,15 +204,15 @@ class ImageStage(Stage):
         """
         # Try Google Imagen first
         if self.primary_generator and not self.primary_generator.mock_mode:
-            logger.info("Attempting image generation with Google Imagen 4.0...")
+            logger.info("Attempting image generation with Imagen 4.0...")
             try:
                 # Extract project folder ID if available
                 project_folder_id = context.company_data.get("project_folder_id")
                 image_url = self.primary_generator.generate_image(image_prompt, project_folder_id)
                 if image_url:
-                    logger.info("✅ Google Imagen 4.0 generation successful")
+                    logger.info("✅ Imagen 4.0 generation successful")
                     return image_url
-                logger.warning("Google Imagen generation failed, trying fallback...")
+                logger.warning("Imagen 4.0 generation failed, trying fallback...")
             except Exception as e:
                 logger.warning(f"Google Imagen error: {e}, trying fallback...")
         
@@ -231,6 +260,24 @@ class ImageStage(Stage):
             if len(alt_text) > 125:
                 alt_text = alt_text[:122] + "..."
             return alt_text
+
+    def _get_section_title(self, structured_data, section_nums: list) -> Optional[str]:
+        """
+        Get the first non-empty section title from a list of section numbers.
+        
+        Args:
+            structured_data: ArticleOutput object
+            section_nums: List of section numbers to try (e.g., [3, 4])
+            
+        Returns:
+            First non-empty section title, or None if all are empty
+        """
+        for num in section_nums:
+            title_key = f"section_{num:02d}_title"
+            title = getattr(structured_data, title_key, "")
+            if title and title.strip():
+                return title.strip()
+        return None
 
     def __repr__(self) -> str:
         """String representation."""

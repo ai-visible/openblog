@@ -10,6 +10,10 @@ lxml>=4.9.0
 bleach>=6.0.0
 markdown>=3.5.0
 playwright>=1.40.0
+slowapi>=0.1.9
+
+# Testing
+pytest-asyncio>=0.21.0
 
 # Graphics library
 openfigma @ git+https://github.com/federicodeponte/openfigma.git@main

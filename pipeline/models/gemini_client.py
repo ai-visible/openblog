@@ -158,6 +158,60 @@ def build_article_response_schema(genai):
     )
 
 
+def build_refresh_response_schema(genai):
+    """
+    Build Gemini response_schema from RefreshResponse Pydantic model.
+    
+    This forces Gemini to output strict JSON when refreshing content,
+    preventing hallucinations and ensuring consistent structure.
+    
+    Returns:
+        genai.types.Schema object for response_schema parameter
+    """
+    from google.genai import types
+    
+    # RefreshedSection sub-schema
+    refreshed_section_schema = types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "heading": types.Schema(
+                type=types.Type.STRING, 
+                description="Section heading (plain text, NO HTML)"
+            ),
+            "content": types.Schema(
+                type=types.Type.STRING,
+                description="Updated section content (may include HTML like <p>, <ul>, <strong>)"
+            ),
+            "change_summary": types.Schema(
+                type=types.Type.STRING,
+                description="Brief description of changes made (e.g., 'Updated stats to 2025')"
+            ),
+        },
+        required=["heading", "content"]
+    )
+    
+    # Main RefreshResponse schema
+    return types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "sections": types.Schema(
+                type=types.Type.ARRAY,
+                items=refreshed_section_schema,
+                description="List of refreshed sections (at least 1 required)"
+            ),
+            "meta_description": types.Schema(
+                type=types.Type.STRING,
+                description="Updated meta description (120-160 chars, optional)"
+            ),
+            "changes_made": types.Schema(
+                type=types.Type.STRING,
+                description="Overall summary of all changes made"
+            ),
+        },
+        required=["sections", "changes_made"]
+    )
+
+
 class GeminiClient:
     """
     AI client for content generation with Google Search grounding.

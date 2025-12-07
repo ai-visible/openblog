@@ -73,20 +73,25 @@ class InternalLinksStage(Stage):
         topics = self._extract_topics(context.structured_data)
         logger.info(f"Extracted {len(topics)} topics from article")
 
-        # Generate link suggestions based on topics
+        # Generate link suggestions based ONLY on:
+        # 1) Batch siblings (cross-link within this batch)
+        # 2) Citations extracted from the Sources field
         link_list = self._generate_suggestions(topics, context)
-        logger.info(f"Generated {link_list.count()} initial link suggestions")
+        logger.info(f"Generated {link_list.count()} initial link suggestions (batch siblings + citations)")
 
-        # Validate URLs with HTTP HEAD checks
-        logger.info(f"Validating {link_list.count()} internal link URLs...")
-        validated_link_list = await self._validate_internal_link_urls(link_list, context)
+        # Validate URLs with HTTP HEAD checks (skip if nothing to validate)
+        if link_list.count() > 0:
+            logger.info(f"Validating {link_list.count()} internal link URLs...")
+            validated_link_list = await self._validate_internal_link_urls(link_list, context)
+        else:
+            validated_link_list = link_list
         
-        # Filter and optimize
+        # Filter and optimize (keep only top 10)
         link_list = (
             validated_link_list.filter_valid()
             .sort_by_relevance()
             .deduplicate_domains()
-            .limit(10)  # Keep top 10 links
+            .limit(10)
         )
 
         logger.info(f"✅ Final link count: {link_list.count()}")
@@ -165,116 +170,80 @@ class InternalLinksStage(Stage):
         company_data = context.company_data or {}
         competitors = company_data.get("company_competitors", [])
         company_name = company_data.get("company_name", "")
-
-        logger.debug(f"Generating suggestions for topics: {topics}")
-        logger.debug(f"Avoiding competitors: {competitors}")
-
-        # Check if sitemap_urls were provided in job_config
-        sitemap_urls = context.job_config.get("sitemap_urls", []) if context.job_config else []
         
         # Get batch siblings for cross-linking within same batch
         batch_siblings = context.job_config.get("batch_siblings", []) if context.job_config else []
         
-        # PRIORITIZE batch siblings - add them FIRST to the link pool
-        batch_sibling_urls = []
+        # Build link list from two sources only:
+        # A) Batch sibling articles (cross-linking within the batch)
+        # B) Citations extracted from Sources
+        batch_sibling_links: List[Dict[str, Any]] = []
         if batch_siblings:
             logger.info(f"Prioritizing {len(batch_siblings)} batch siblings for cross-linking")
-            for sibling in batch_siblings:
+            for idx, sibling in enumerate(batch_siblings):
                 sibling_url = sibling.get("slug", "")
                 sibling_title = sibling.get("title", "")
                 sibling_keyword = sibling.get("keyword", "")
-                if sibling_url:
-                    batch_sibling_urls.append({
-                        'url': sibling_url,
-                        'title': sibling_title or sibling_url.split("/")[-1].replace("-", " ").title(),
-                        'keyword': sibling_keyword,
-                        'is_batch_sibling': True,
-                    })
-        
-        # Merge batch sibling URLs into sitemap_urls pool (prioritized first)
-        if batch_sibling_urls:
-            for batch_item in batch_sibling_urls:
-                if batch_item['url'] not in sitemap_urls:
-                    sitemap_urls.insert(0, batch_item['url'])  # Insert at beginning for priority
-        
-        if sitemap_urls:
-            # USE PROVIDED SITEMAP URLs (batch siblings prioritized)
-            logger.info(f"Using {len(sitemap_urls)} provided sitemap URLs ({len(batch_sibling_urls)} batch siblings)")
-            for i, url in enumerate(sitemap_urls[:10]):
-                # Check if this is a batch sibling
-                is_batch = any(item['url'] == url for item in batch_sibling_urls)
-                batch_item = next((item for item in batch_sibling_urls if item['url'] == url), None)
+                if not sibling_url:
+                    continue
                 
-                # Generate a title from the URL or use batch sibling title
-                if batch_item:
-                    title = batch_item['title']
+                # Standardize URL format: always use /magazine/{slug}
+                if sibling_url.startswith("http"):
+                    # Keep full URLs as-is (external links)
+                    url = sibling_url
+                elif sibling_url.startswith("/magazine/"):
+                    # Already standardized
+                    url = sibling_url
+                elif sibling_url.startswith("/"):
+                    # Has leading slash but not /magazine/ → add magazine prefix
+                    url = f"/magazine{sibling_url}"
                 else:
-                    title = url.split("/")[-1].replace("-", " ").title()
-                    if not title:
-                        title = "Related Content"
-                
-                # Higher relevance for batch siblings
-                relevance = max(10 - i, 5) if not is_batch else max(10 - i + 2, 7)
-                
-                link_list.add_link(
-                    url=url,
-                    title=title if not is_batch else f"{title} (Related Article)",
-                    relevance=relevance,
-                    domain=url.split("/")[1] if "/" in url else "/blog/",
-                )
-            logger.info(f"Added {link_list.count()} links from sitemap_urls ({len(batch_sibling_urls)} batch siblings prioritized)")
-            return link_list
-        
-        # FALLBACK: Generate placeholder links from topics
-        logger.warning("No sitemap_urls provided, generating placeholders from topics")
-        for i, topic in enumerate(topics[:5]):
-            url_slug = topic.lower().replace(" ", "-").replace("?", "")
-            url = f"/blog/{url_slug}"
+                    # No leading slash → add /magazine/ prefix
+                    url = f"/magazine/{sibling_url}"
 
-            # Filter competitors
+                title = sibling_title or url.split("/")[-1].replace("-", " ").title()
+                # CRITICAL FIX: Clamp relevance to max=10 (Pydantic validation requirement)
+                relevance = min(max(10 - idx + 2, 7), 10)  # prioritize batch siblings highly
+                batch_sibling_links.append({
+                    "url": url,
+                    "title": title,
+                    "keyword": sibling_keyword,
+                    "relevance": relevance,
+                })
+
+        # Parse citations from Sources
+        citations = self._parse_citations_from_sources(context.structured_data.Sources if context.structured_data else "")
+
+        # Build InternalLinkList
+        link_list = InternalLinkList()
+
+        # Add batch siblings first
+        for link in batch_sibling_links:
+                link_list.add_link(
+                url=link["url"],
+                title=f"{link['title']} (Related Article)",
+                relevance=link["relevance"],
+                domain=link["url"].split("/")[1] if "/" in link["url"] else "/blog/",
+                )
+
+        # Then add citations
+        for i, cit in enumerate(citations):
+            # Skip competitor domains if specified
             skip = False
             for competitor in competitors:
-                if competitor.lower() in topic.lower():
+                if competitor.lower() in cit["url"].lower():
                     skip = True
                     break
-
             if skip:
-                logger.debug(f"Skipping topic (competitor mentioned): {topic}")
                 continue
-
-            # Add link with relevance based on position
-            relevance = max(10 - i, 5)  # Decreasing relevance for later topics
             link_list.add_link(
-                url=url,
-                title=f"Learn more about {topic}",
-                relevance=relevance,
-                domain="/blog/",
+                url=cit["url"],
+                title=cit["title"],
+                relevance=max(8 - i, 5),
+                domain=cit["url"].split("/")[2] if cit["url"].startswith("http") else "/blog/",
             )
 
-        # Ensure minimum diversity (at least 3 different sources)
-        # In real implementation, would fetch from internal knowledge base
-        additional_links = [
-            (
-                "/blog/basics",
-                "Getting Started Guide",
-                7,
-            ),
-            (
-                "/blog/best-practices",
-                "Best Practices",
-                6,
-            ),
-            (
-                "/blog/case-studies",
-                "Case Studies",
-                5,
-            ),
-        ]
-
-        for url, title, relevance in additional_links:
-            link_list.add_link(url=url, title=title, relevance=relevance, domain="/blog/")
-
-        logger.info(f"Generated {link_list.count()} initial suggestions")
+        logger.info(f"Generated {link_list.count()} initial suggestions (batch siblings + citations only)")
         return link_list
 
     async def _validate_internal_link_urls(
@@ -379,3 +348,26 @@ class InternalLinksStage(Stage):
     def __repr__(self) -> str:
         """String representation."""
         return f"InternalLinksStage(stage_num={self.stage_num})"
+
+    # Helpers
+    @staticmethod
+    def _parse_citations_from_sources(sources: str) -> List[Dict[str, str]]:
+        """
+        Parse the Sources field into a list of citation dicts.
+        Expected format: [1]: https://example.com – Description text
+        """
+        if not sources:
+            return []
+        import re
+
+        citations = []
+        pattern = r"\[(\d+)\]:\s*(https?://[^\s]+)\s*[–-]\s*(.+?)(?=\n\[|\n*$)"
+        matches = re.findall(pattern, sources, re.MULTILINE | re.DOTALL)
+
+        for num, url, title in matches:
+            citations.append({
+                "url": url.strip(),
+                "title": title.strip() or f"Source [{num}]",
+            })
+
+        return citations

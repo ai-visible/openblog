@@ -21,6 +21,7 @@ try:
     from ..blog_generation.stage_00_data_fetch import DataFetchStage
     from ..blog_generation.stage_01_prompt_build import PromptBuildStage
     from ..blog_generation.stage_02_gemini_call import GeminiCallStage
+    from ..blog_generation.stage_02b_quality_refinement import QualityRefinementStage
     from ..blog_generation.stage_03_extraction import ExtractionStage
     from ..blog_generation.stage_04_citations import CitationsStage
     from ..blog_generation.stage_05_internal_links import InternalLinksStage

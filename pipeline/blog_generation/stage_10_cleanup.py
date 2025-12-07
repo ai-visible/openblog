@@ -270,6 +270,14 @@ class CleanupStage(Stage):
             merged["image_url"] = parallel_results["image_url"]
         if "image_alt_text" in parallel_results:
             merged["image_alt_text"] = parallel_results["image_alt_text"]
+        if "mid_image_url" in parallel_results:
+            merged["mid_image_url"] = parallel_results["mid_image_url"]
+        if "mid_image_alt" in parallel_results:
+            merged["mid_image_alt"] = parallel_results["mid_image_alt"]
+        if "bottom_image_url" in parallel_results:
+            merged["bottom_image_url"] = parallel_results["bottom_image_url"]
+        if "bottom_image_alt" in parallel_results:
+            merged["bottom_image_alt"] = parallel_results["bottom_image_alt"]
 
         # Add ToC
         if "toc_dict" in parallel_results:

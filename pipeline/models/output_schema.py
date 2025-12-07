@@ -25,6 +25,47 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class ComparisonTable(BaseModel):
+    """
+    Structured comparison table for products, tools, or features.
+    
+    Used for content that benefits from side-by-side comparisons.
+    Examples: pricing tiers, tool features, before/after scenarios.
+    """
+    
+    title: str = Field(..., description="Table title (e.g., 'AI Code Tools Comparison')")
+    headers: List[str] = Field(..., description="Column headers (e.g., ['Tool', 'Price', 'Speed'])")
+    rows: List[List[str]] = Field(..., description="Table rows, each row is a list matching header count")
+    
+    @field_validator('headers')
+    @classmethod
+    def validate_headers(cls, v):
+        """Ensure headers exist and are reasonable."""
+        if not v or len(v) < 2:
+            raise ValueError("Table must have at least 2 columns")
+        if len(v) > 6:
+            raise ValueError("Table should not exceed 6 columns for readability")
+        return v
+    
+    @field_validator('rows')
+    @classmethod
+    def validate_rows(cls, v, info):
+        """Ensure rows match header count."""
+        if not v:
+            raise ValueError("Table must have at least one row")
+        headers = info.data.get('headers', [])
+        header_count = len(headers)
+        
+        for idx, row in enumerate(v):
+            if len(row) != header_count:
+                raise ValueError(f"Row {idx} has {len(row)} cells but table has {header_count} columns")
+        
+        if len(v) > 10:
+            raise ValueError("Table should not exceed 10 rows for readability")
+        
+        return v
+
+
 class ArticleOutput(BaseModel):
     """
     Complete article output schema (30+ fields).
@@ -69,8 +110,9 @@ class ArticleOutput(BaseModel):
     )
 
     # Content sections (9 sections × 2 fields)
-    section_01_title: Optional[str] = Field(default="", description="Section 1 heading")
-    section_01_content: Optional[str] = Field(default="", description="Section 1 HTML content")
+    # Section 1 is REQUIRED (article must have at least one section)
+    section_01_title: str = Field(..., description="Section 1 heading (REQUIRED)")
+    section_01_content: str = Field(..., description="Section 1 HTML content (REQUIRED)")
     section_02_title: Optional[str] = Field(default="", description="Section 2 heading")
     section_02_content: Optional[str] = Field(default="", description="Section 2 HTML content")
     section_03_title: Optional[str] = Field(default="", description="Section 3 heading")
@@ -135,6 +177,12 @@ class ArticleOutput(BaseModel):
     Search_Queries: Optional[str] = Field(
         default="",
         description="Research queries documented (Q1: keyword...). One per line.",
+    )
+    
+    # Comparison tables (optional, used when content benefits from structured comparison)
+    tables: Optional[List[ComparisonTable]] = Field(
+        default=[],
+        description="Comparison tables (max 2 per article). Use for product comparisons, pricing tiers, feature matrices.",
     )
 
     model_config = ConfigDict(
