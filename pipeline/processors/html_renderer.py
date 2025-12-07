@@ -709,7 +709,15 @@ class HTMLRenderer:
         if not content:
             return ""
         
-        # FIRST: Humanize language (remove AI markers)
+        # STEP 0: REMOVE ALL ACADEMIC CITATIONS [N] - SAFETY NET
+        # This is a HARD BLOCK to enforce inline-only citation style
+        # Removes: [1], [2], [1][2], [2][3], etc.
+        # Also removes <a href="#source-X">[N]</a> (linked academic citations)
+        content = re.sub(r'<a[^>]*href=["\']#source-\d+["\'][^>]*>\s*\[\d+\]\s*</a>', '', content)  # Linked [N]
+        content = re.sub(r'\[\d+\]', '', content)  # Standalone [N]
+        logger.info("🚫 Stripped all [N] academic citations (enforcing inline-only style)")
+        
+        # STEP 1: Humanize language (remove AI markers)
         content = HTMLRenderer._humanize_content(content)
         
         # Pattern 0: Fix duplicate punctuation (Gemini typos)

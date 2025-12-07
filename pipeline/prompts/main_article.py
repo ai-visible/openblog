@@ -287,21 +287,27 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
     
     **CITATION STYLE (CRITICAL - INLINE LINKS ONLY):**
     
-    ❌ **FORBIDDEN - Academic numbered style:**
+    🚫 **ABSOLUTELY FORBIDDEN - NEVER USE THESE:**
     ```html
     <p>GitHub Copilot increases productivity by 55% [1][2].</p>
     <p>Amazon Q saved 4,500 developer years [3][4].</p>
+    <p>Research shows 45% vulnerability rate [5].</p>
     ```
+    ❌ ANY numbered brackets like [1], [2], [3], [1][2], [2][3] are BANNED
+    ❌ If you write [N] anywhere, the output will be REJECTED
+    ❌ Scientific/academic citation style is NOT ALLOWED
     
-    ✅ **REQUIRED - Inline contextual links:**
+    ✅ **REQUIRED - Inline contextual links ONLY:**
     ```html
     <p>GitHub Copilot increases productivity by 55% <a href="#source-1" class="citation">according to GitHub's enterprise study</a>.</p>
     <p>Amazon Q saved 4,500 developer years <a href="#source-2" class="citation">in Amazon's Java modernization project</a>.</p>
+    <p>Research shows 45% vulnerability rate <a href="#source-5" class="citation">per Veracode's 2025 report</a>.</p>
     ```
     
-    **INLINE LINK RULES:**
+    **MANDATORY INLINE LINK RULES:**
     - Link text = 2-5 words describing the source (e.g., "according to NIST", "GitHub's 2024 study", "Amazon's case study")
     - Use `class="citation"` for all source links
+    - EVERY fact must have an inline contextual link (NOT [N])
     - href = `#source-N` where N matches source number in Sources section
     - Place link at END of claim/data point (before period)
     - Natural language, not academic markers
