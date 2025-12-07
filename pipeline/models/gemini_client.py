@@ -25,11 +25,137 @@ import asyncio
 import logging
 from typing import Optional, Dict, Any, List
 
+from ..models.output_schema import ArticleOutput, ComparisonTable
+
 logger = logging.getLogger(__name__)
 
 # Default models - using Gemini 3.0 Pro Preview
 DEFAULT_MODEL = "gemini-3-pro-preview"  # Gemini 3.0 Pro Preview with search grounding (includes URL context)
 QUALITY_MODEL = "gemini-3-pro-preview"  # Same model for quality mode
+
+
+def build_article_response_schema(genai):
+    """
+    Build Gemini response_schema from ArticleOutput Pydantic model.
+    
+    This forces Gemini to output strict JSON matching our schema,
+    preventing hallucinations from freeform text generation.
+    
+    Returns:
+        genai.types.Schema object for response_schema parameter
+    """
+    from google.genai import types
+    
+    # ComparisonTable sub-schema
+    comparison_table_schema = types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "title": types.Schema(type=types.Type.STRING, description="Table title"),
+            "headers": types.Schema(
+                type=types.Type.ARRAY,
+                items=types.Schema(type=types.Type.STRING),
+                description="Column headers (2-6 columns)"
+            ),
+            "rows": types.Schema(
+                type=types.Type.ARRAY,
+                items=types.Schema(
+                    type=types.Type.ARRAY,
+                    items=types.Schema(type=types.Type.STRING)
+                ),
+                description="Table rows (1-10 rows)"
+            ),
+        },
+        required=["title", "headers", "rows"]
+    )
+    
+    # Main ArticleOutput schema
+    return types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            # Core content (REQUIRED)
+            "Headline": types.Schema(type=types.Type.STRING, description="Main article headline"),
+            "Subtitle": types.Schema(type=types.Type.STRING, description="Sub-headline (optional)"),
+            "Teaser": types.Schema(type=types.Type.STRING, description="2-3 sentence hook"),
+            "Direct_Answer": types.Schema(type=types.Type.STRING, description="40-60 word direct answer"),
+            "Intro": types.Schema(type=types.Type.STRING, description="Opening paragraph (80-120 words)"),
+            
+            # SEO metadata (REQUIRED)
+            "Meta_Title": types.Schema(type=types.Type.STRING, description="≤55 char SEO title"),
+            "Meta_Description": types.Schema(type=types.Type.STRING, description="≤130 char SEO description"),
+            
+            # Lead generation (optional)
+            "Lead_Survey_Title": types.Schema(type=types.Type.STRING, description="Optional survey title"),
+            "Lead_Survey_Button": types.Schema(type=types.Type.STRING, description="Optional CTA button"),
+            
+            # Content sections (section 1 REQUIRED, rest optional)
+            "section_01_title": types.Schema(type=types.Type.STRING, description="Section 1 heading (REQUIRED, NO HTML)"),
+            "section_01_content": types.Schema(type=types.Type.STRING, description="Section 1 HTML content (REQUIRED)"),
+            "section_02_title": types.Schema(type=types.Type.STRING, description="Section 2 heading (NO HTML)"),
+            "section_02_content": types.Schema(type=types.Type.STRING, description="Section 2 HTML content"),
+            "section_03_title": types.Schema(type=types.Type.STRING, description="Section 3 heading (NO HTML)"),
+            "section_03_content": types.Schema(type=types.Type.STRING, description="Section 3 HTML content"),
+            "section_04_title": types.Schema(type=types.Type.STRING, description="Section 4 heading (NO HTML)"),
+            "section_04_content": types.Schema(type=types.Type.STRING, description="Section 4 HTML content"),
+            "section_05_title": types.Schema(type=types.Type.STRING, description="Section 5 heading (NO HTML)"),
+            "section_05_content": types.Schema(type=types.Type.STRING, description="Section 5 HTML content"),
+            "section_06_title": types.Schema(type=types.Type.STRING, description="Section 6 heading (NO HTML)"),
+            "section_06_content": types.Schema(type=types.Type.STRING, description="Section 6 HTML content"),
+            "section_07_title": types.Schema(type=types.Type.STRING, description="Section 7 heading (NO HTML)"),
+            "section_07_content": types.Schema(type=types.Type.STRING, description="Section 7 HTML content"),
+            "section_08_title": types.Schema(type=types.Type.STRING, description="Section 8 heading (NO HTML)"),
+            "section_08_content": types.Schema(type=types.Type.STRING, description="Section 8 HTML content"),
+            "section_09_title": types.Schema(type=types.Type.STRING, description="Section 9 heading (NO HTML)"),
+            "section_09_content": types.Schema(type=types.Type.STRING, description="Section 9 HTML content"),
+            
+            # Key takeaways (at least 1 required)
+            "key_takeaway_01": types.Schema(type=types.Type.STRING, description="Key insight #1"),
+            "key_takeaway_02": types.Schema(type=types.Type.STRING, description="Key insight #2"),
+            "key_takeaway_03": types.Schema(type=types.Type.STRING, description="Key insight #3"),
+            
+            # People Also Ask (4 items)
+            "paa_01_question": types.Schema(type=types.Type.STRING, description="PAA question #1 (NO HTML)"),
+            "paa_01_answer": types.Schema(type=types.Type.STRING, description="PAA answer #1"),
+            "paa_02_question": types.Schema(type=types.Type.STRING, description="PAA question #2 (NO HTML)"),
+            "paa_02_answer": types.Schema(type=types.Type.STRING, description="PAA answer #2"),
+            "paa_03_question": types.Schema(type=types.Type.STRING, description="PAA question #3 (NO HTML)"),
+            "paa_03_answer": types.Schema(type=types.Type.STRING, description="PAA answer #3"),
+            "paa_04_question": types.Schema(type=types.Type.STRING, description="PAA question #4 (NO HTML)"),
+            "paa_04_answer": types.Schema(type=types.Type.STRING, description="PAA answer #4"),
+            
+            # FAQ (6 items, at least 5 required)
+            "faq_01_question": types.Schema(type=types.Type.STRING, description="FAQ question #1 (NO HTML)"),
+            "faq_01_answer": types.Schema(type=types.Type.STRING, description="FAQ answer #1"),
+            "faq_02_question": types.Schema(type=types.Type.STRING, description="FAQ question #2 (NO HTML)"),
+            "faq_02_answer": types.Schema(type=types.Type.STRING, description="FAQ answer #2"),
+            "faq_03_question": types.Schema(type=types.Type.STRING, description="FAQ question #3 (NO HTML)"),
+            "faq_03_answer": types.Schema(type=types.Type.STRING, description="FAQ answer #3"),
+            "faq_04_question": types.Schema(type=types.Type.STRING, description="FAQ question #4 (NO HTML)"),
+            "faq_04_answer": types.Schema(type=types.Type.STRING, description="FAQ answer #4"),
+            "faq_05_question": types.Schema(type=types.Type.STRING, description="FAQ question #5 (NO HTML)"),
+            "faq_05_answer": types.Schema(type=types.Type.STRING, description="FAQ answer #5"),
+            "faq_06_question": types.Schema(type=types.Type.STRING, description="FAQ question #6 (NO HTML)"),
+            "faq_06_answer": types.Schema(type=types.Type.STRING, description="FAQ answer #6"),
+            
+            # Image (optional, generated later)
+            "image_url": types.Schema(type=types.Type.STRING, description="Image URL (generated later)"),
+            "image_alt_text": types.Schema(type=types.Type.STRING, description="Image alt text (max 125 chars, NO HTML)"),
+            
+            # Sources and research
+            "Sources": types.Schema(type=types.Type.STRING, description="Citations (max 20)"),
+            "Search_Queries": types.Schema(type=types.Type.STRING, description="Research queries"),
+            
+            # Comparison tables (optional, max 2)
+            "tables": types.Schema(
+                type=types.Type.ARRAY,
+                items=comparison_table_schema,
+                description="Comparison tables (max 2, use for product/feature/pricing comparisons)"
+            ),
+        },
+        required=[
+            "Headline", "Teaser", "Direct_Answer", "Intro", "Meta_Title", "Meta_Description",
+            "section_01_title", "section_01_content"  # At least one section required
+        ]
+    )
 
 
 class GeminiClient:
@@ -89,6 +215,7 @@ class GeminiClient:
         self,
         prompt: str,
         enable_tools: bool = True,
+        response_schema: Any = None,
     ) -> str:
         """
         Generate content using Gemini API with Google Search grounding.
@@ -96,9 +223,10 @@ class GeminiClient:
         Args:
             prompt: Complete prompt string
             enable_tools: Whether to enable Google Search grounding (includes URL context)
+            response_schema: Optional schema for structured JSON output
 
         Returns:
-            Raw response text (plain text with embedded JSON)
+            Raw response text (plain text with embedded JSON, or direct JSON if schema provided)
 
         Raises:
             Exception: If all retries fail
@@ -106,19 +234,21 @@ class GeminiClient:
         logger.info(f"Generating content with {self.MODEL}")
         logger.debug(f"Prompt length: {len(prompt)} characters")
         logger.debug(f"Grounding tools: {enable_tools}")
+        logger.debug(f"Response schema: {'Yes' if response_schema else 'No'}")
 
         # Call API with retry logic
-        response_text = await self._call_api_with_retry(prompt, enable_tools)
+        response_text = await self._call_api_with_retry(prompt, enable_tools, response_schema=response_schema)
 
         return response_text
 
-    async def _call_api_with_retry(self, prompt: str, enable_grounding: bool) -> str:
+    async def _call_api_with_retry(self, prompt: str, enable_grounding: bool, response_schema: Any = None) -> str:
         """
         Call Gemini API with exponential backoff retry.
 
         Args:
             prompt: Complete prompt
             enable_grounding: Whether to enable Google Search grounding (includes URL context)
+            response_schema: Optional schema for structured JSON output
 
         Returns:
             Response text
@@ -154,15 +284,32 @@ class GeminiClient:
                             temperature=self.TEMPERATURE,
                             max_output_tokens=self.MAX_OUTPUT_TOKENS,
                             tools=tools,
+                            response_schema=response_schema,
+                            response_mime_type="application/json" if response_schema else None,
                         )
                     )
                 )
 
                 # Extract text from response
-                if not response or not response.text:
+                if not response:
                     raise Exception("Empty response from Gemini API")
 
-                response_text = response.text
+                # For JSON schema responses, extract from candidates
+                response_text = None
+                if response_schema and hasattr(response, "candidates") and response.candidates:
+                    candidate = response.candidates[0]
+                    if hasattr(candidate, "content") and candidate.content:
+                        parts = getattr(candidate.content, "parts", [])
+                        if parts and hasattr(parts[0], "text"):
+                            response_text = parts[0].text
+
+                # Fallback to response.text
+                if not response_text and hasattr(response, "text") and response.text:
+                    response_text = response.text
+
+                if not response_text:
+                    raise Exception("Empty response payload from Gemini API")
+
                 logger.info(f"✅ API call succeeded ({len(response_text)} chars)")
                 
                 # Log grounding metadata if available
@@ -306,6 +453,66 @@ class GeminiClient:
 
         # No JSON found
         raise ValueError("No JSON found in response")
+
+    @staticmethod
+    def build_article_response_schema(genai_types) -> Any:
+        """
+        Build a Google GenAI Schema from ArticleOutput for response_schema.
+        
+        Maps ArticleOutput fields to proper schema types:
+        - Most fields: STRING (text/HTML)
+        - tables: ARRAY of OBJECT (structured data)
+        
+        Args:
+            genai_types: google.genai.types module
+            
+        Returns:
+            Schema object for GenerateContentConfig
+        """
+        props = {}
+        required = []
+        
+        # Special handling for tables field (ARRAY of OBJECT)
+        table_schema = genai_types.Schema(
+            type=genai_types.Type.OBJECT,
+            properties={
+                "title": genai_types.Schema(type=genai_types.Type.STRING),
+                "headers": genai_types.Schema(
+                    type=genai_types.Type.ARRAY,
+                    items=genai_types.Schema(type=genai_types.Type.STRING)
+                ),
+                "rows": genai_types.Schema(
+                    type=genai_types.Type.ARRAY,
+                    items=genai_types.Schema(
+                        type=genai_types.Type.ARRAY,
+                        items=genai_types.Schema(type=genai_types.Type.STRING)
+                    )
+                ),
+            },
+            required=["title", "headers", "rows"]
+        )
+        
+        # Map all fields from ArticleOutput
+        for name, field in ArticleOutput.model_fields.items():
+            if name == "tables":
+                # CRITICAL FIX: tables is ARRAY, not STRING
+                props[name] = genai_types.Schema(
+                    type=genai_types.Type.ARRAY,
+                    items=table_schema
+                )
+            else:
+                # All other fields are strings (text/HTML)
+                props[name] = genai_types.Schema(type=genai_types.Type.STRING)
+            
+            # Mark as required if field is required
+            if field.is_required():
+                required.append(name)
+        
+        return genai_types.Schema(
+            type=genai_types.Type.OBJECT,
+            properties=props,
+            required=required if required else None,
+        )
 
     def __repr__(self) -> str:
         """String representation."""

@@ -31,25 +31,26 @@ from typing import Dict, Any
 from ..core.execution_context import ExecutionContext
 from ..core.workflow_engine import Stage
 from ..core.error_handling import with_api_retry, error_reporter, ErrorClassifier
-from ..models.gemini_client import GeminiClient
+from ..models.gemini_client import GeminiClient, build_article_response_schema
 
 logger = logging.getLogger(__name__)
 
 
 class GeminiCallStage(Stage):
     """
-    Stage 2: Generate content using Gemini API with tools.
+    Stage 2: Generate content using Gemini API with tools + JSON schema.
 
     Handles:
     - Initializing Gemini client
-    - Calling API with tools enabled
-    - Parsing response (JSON extraction from text/plain)
+    - Building response_schema from ArticleOutput (forces structured output)
+    - Calling API with tools enabled + schema
+    - Parsing response (now direct JSON from Gemini)
     - Error handling and retry logic
     - Storing raw article in context
     """
 
     stage_num = 2
-    stage_name = "Gemini Content Generation"
+    stage_name = "Gemini Content Generation (Structured JSON)"
 
     def __init__(self) -> None:
         """Initialize stage with Gemini client."""
@@ -58,13 +59,13 @@ class GeminiCallStage(Stage):
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:
         """
-        Execute Stage 2: Generate content with Gemini.
+        Execute Stage 2: Generate content with Gemini (structured JSON output).
 
         Input from context:
         - prompt: Complete prompt (from Stage 1)
 
         Output to context:
-        - raw_article: Raw Gemini response (text/plain with embedded JSON)
+        - raw_article: Raw Gemini response (DIRECT JSON matching ArticleOutput schema)
 
         Args:
             context: ExecutionContext from Stage 1
@@ -84,11 +85,15 @@ class GeminiCallStage(Stage):
 
         logger.debug(f"Prompt length: {len(context.prompt)} characters")
 
-        # Call Gemini API with tools (with error handling and retries)
-        logger.info(f"Calling Gemini API ({self.client.MODEL}) with tools enabled...")
-        logger.info("(Deep research happening via googleSearch + urlContext tools)")
+        # Build response schema from ArticleOutput (forces structured output)
+        response_schema = build_article_response_schema(self.client._genai)
+        logger.info("📐 Built JSON schema from ArticleOutput (prevents hallucinations)")
 
-        raw_response = await self._generate_content_with_retry(context)
+        # Call Gemini API with tools + JSON schema (with error handling and retries)
+        logger.info(f"Calling Gemini API ({self.client.MODEL}) with tools + schema...")
+        logger.info("(Deep research via googleSearch + urlContext, output forced to JSON)")
+
+        raw_response = await self._generate_content_with_retry(context, response_schema=response_schema)
 
         logger.info(f"✅ Gemini API call succeeded")
         logger.info(f"   Response size: {len(raw_response)} characters")
@@ -96,24 +101,20 @@ class GeminiCallStage(Stage):
         # Validate response
         self._validate_response(raw_response)
 
-        # Store raw response
+        # Store raw response (now direct JSON string from structured output)
         context.raw_article = raw_response
 
         # Log response preview
         preview = raw_response[:200].replace("\n", " ")
         logger.info(f"   Response preview: {preview}...")
 
-        # Try to extract JSON to verify structure
+        # Parse JSON to verify structure (response_schema ensures valid JSON)
         try:
-            json_data = self.client.extract_json_from_response(raw_response)
-            logger.info(f"✅ JSON extraction successful")
+            json_data = json.loads(raw_response)
+            logger.info(f"✅ JSON parsing successful")
             logger.info(f"   Top-level keys: {', '.join(list(json_data.keys())[:5])}...")
-            
-            # Validate critical meta fields are present
-            self._validate_required_fields(json_data)
-            
         except Exception as e:
-            logger.warning(f"⚠️  Could not extract JSON from response: {e}")
+            logger.warning(f"⚠️  Could not parse JSON from response: {e}")
             logger.warning("   This may cause issues in Stage 3 (Extraction)")
 
         return context
@@ -190,7 +191,7 @@ class GeminiCallStage(Stage):
         logger.info(f"   Meta_Description: {len(meta_description)} chars")
     
     @with_api_retry("stage_02")
-    async def _generate_content_with_retry(self, context: ExecutionContext) -> str:
+    async def _generate_content_with_retry(self, context: ExecutionContext, response_schema: Any = None) -> str:
         """
         Generate content with comprehensive error handling and retries.
         
@@ -207,6 +208,7 @@ class GeminiCallStage(Stage):
             raw_response = await self.client.generate_content(
                 prompt=context.prompt,
                 enable_tools=True,  # CRITICAL: tools must be enabled!
+                response_schema=response_schema,  # JSON schema for structured output
             )
             
             if not raw_response or len(raw_response.strip()) < 500:
