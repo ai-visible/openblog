@@ -123,7 +123,7 @@ class SmartCitationValidator:
         # Validate all citations in parallel for performance
         validation_tasks = [
             self.validate_single_citation(
-                citation, company_url, competitors, language
+                citation, company_url, competitors
             )
             for citation in citations
         ]
