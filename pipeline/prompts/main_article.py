@@ -264,7 +264,7 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
    
    VALIDATION: Any standalone "**Label:**" on its own line = INSTANT REJECTION.
    VALIDATION: Any list that duplicates paragraph text verbatim = INSTANT REJECTION.
-   VALIDATION: Any HTML tags (<p>, <ul>, <li>, <strong>) = INSTANT REJECTION.
+   VALIDATION: Any HTML syntax = INSTANT REJECTION.
 
 6. **PRIMARY KEYWORD PLACEMENT** (CRITICAL):
    The exact phrase "{primary_keyword}" MUST appear **5-8 times TOTAL across the entire article** (headline + intro + all sections).
@@ -719,7 +719,7 @@ Include in JSON output as:
   7. ✅ NO standalone labels like "**Company:**" on their own line
   8. ✅ Scan for "aI" → replace with "AI"
   9. ✅ Remove banned phrases: "seamlessly", "leverage", "cutting-edge"
-  10. ✅ ZERO HTML tags - pure Markdown only
+  10. ✅ ZERO HTML syntax - pure Markdown only
 
 *** MARKDOWN SYNTAX RULES ***
 
@@ -727,26 +727,26 @@ Include in JSON output as:
 
 **REQUIRED MARKDOWN SYNTAX:**
 
-1. **Paragraphs**: Separate with blank lines (no <p> tags)
+1. **Paragraphs**: Separate with blank lines
    ```markdown
    First paragraph with natural flow.
    
    Second paragraph continues the narrative.
    ```
 
-2. **Bold text**: Use **text** (NOT <strong>text</strong>)
+2. **Bold text**: Use **text** for emphasis
    ```markdown
    This is **bold emphasis** for key points.
    ```
 
-3. **Lists**: Use - or * for unordered lists (NO <ul><li> tags)
+3. **Lists**: Use - or * for unordered lists
    ```markdown
    - First list item with full description
    - Second list item with metrics
    - Third list item with context
    ```
 
-4. **Headings**: Use ## for H2, ### for H3 (NO <h2> tags)
+4. **Headings**: Use ## for H2, ### for H3
    - Note: Section titles are already H2 headings, don't add ## in content
 
 5. **Links**: 
@@ -760,9 +760,8 @@ Include in JSON output as:
 6. **Emphasis**: Use *text* for italic (if needed, but prefer **bold**)
 
 **STRICTLY FORBIDDEN:**
-- ❌ HTML tags: <p>, <ul>, <li>, <strong>, <em>, <div>, <span>, <h2>
-- ❌ HTML anchor tags: <a href="...">...</a> (use Markdown [text](url))
-- ❌ Any HTML entity codes: &nbsp;, &mdash;, etc.
+- ❌ Any HTML syntax whatsoever
+- ❌ HTML entity codes
 - ❌ Inline styles or CSS
 
 **OUTPUT WILL BE REJECTED if ANY HTML tags are found in content fields.**
@@ -779,7 +778,7 @@ Study these examples carefully - this is EXACTLY how your output should look.
 - JSON must be valid and minified (no line breaks inside values)
 - No extra keys, comments, or process explanations
 - **WRITE IN PURE MARKDOWN**: Use blank lines to separate paragraphs, **bold** for emphasis, - for lists
-- **NO HTML TAGS**: NO <p>, <ul>, <li>, <strong>, <em>, <div>, <span> tags
+- **NO HTML SYNTAX**: Pure Markdown only
 - **USE PROPER LISTS**: When comparing features/tools, use Markdown lists (- or *) with full descriptions
 - **NO STANDALONE LABELS**: Never write "**Label:** [N]" on its own line
 
@@ -838,7 +837,7 @@ VALIDATION RULES (Output will be REJECTED if violated):
 2. ❌ Any paragraph under 60 words → REJECTED  
 3. ❌ Any case study without Company + Metric + Timeframe → REJECTED
 4. ❌ Any one-sentence paragraphs → REJECTED
-5. ❌ ANY HTML tags (<p>, <ul>, <li>, <strong>, <em>) → REJECTED
+5. ❌ ANY HTML syntax → REJECTED
 6. ✅ Must have 2+ case studies (30+ words each)
 7. ✅ Must have 60-100 word cohesive paragraphs throughout
 8. ✅ Use Markdown lists (- or *) for feature lists, integrate labels naturally
