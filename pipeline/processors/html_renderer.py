@@ -1064,6 +1064,10 @@ class HTMLRenderer:
             (r'\bso you can managing\b', 'managing'),
             (r'\bWhat is as we handle of\b', 'As we evaluate'),
             (r'\bWhat is as we\b', 'As we'),
+            # CRITICAL: Fix the main broken patterns we identified
+            (r'\bYou can to\b', 'To'),  # "You can to implement" → "To implement"
+            (r'\bYou can to implementing\b', 'To implement'),
+            (r'\bYou can to\s+', 'To '),  # "You can to X" → "To X"
         ]
         
         for pattern, replacement in grammar_fixes:
@@ -1119,7 +1123,21 @@ class HTMLRenderer:
         content = re.sub(r'<li>\s*[.,;:\-]*\s*</li>', '', content)  # Only punctuation-only items
         # Be more careful with label-only items - only remove if they have no content after the colon
         content = re.sub(r'<li>\s*<strong>[^<]*:</strong>\s*</li>', '', content)  # Label-only items (no content after colon)
-        logger.info("🧹 Removed only truly empty list items after citation stripping")
+        
+        # STEP 0.1a: REMOVE INCOMPLETE SENTENCE FRAGMENTS IN LIST ITEMS
+        # CRITICAL FIX: Be much more conservative - only remove clearly broken fragments
+        
+        # Only remove items ending with incomplete article patterns (obvious fragments)
+        content = re.sub(r'<li>[^<]*\ba\s+(data|key|security|network|system|threat|risk|user)\s*</li>', '', content)  # "cost of a data" etc.
+        
+        # Only remove items that are clearly incomplete (1-2 words only)
+        content = re.sub(r'<li>\s*\w+\s*\w*\s*</li>', '', content)  # 1-2 word items
+        
+        # REMOVED DANGEROUS PATTERN: The preposition-ending regex was destroying valid content
+        # Old pattern: r'<li>[^<]*\b(of|by|the|and|with|for|to|in|on|at|from)\s*</li>'
+        # This was removing valid sentences like "This is what you need to rely on"
+        
+        logger.info("🧹 Removed incomplete list items and sentence fragments")
         
         # STEP 0.5: REMOVE EMPTY LABEL PARAGRAPHS (Gemini bug)
         # Matches: <p><strong>GitHub Copilot:</strong></p> (label with NO content after)
@@ -1127,30 +1145,18 @@ class HTMLRenderer:
         content = re.sub(r'<p>\s*<strong>[^<]+:</strong>\s*</p>', '', content)
         logger.info("🧹 Removed empty label paragraphs")
         
-        # STEP 0.6: FIX SENTENCE FRAGMENTS AND ORPHANED TEXT - AGGRESSIVE VERSION
-        # Gemini splits sentences incorrectly, creating fragments that need to be merged
+        # STEP 0.6: FIX SENTENCE FRAGMENTS AND ORPHANED TEXT - CONSERVATIVE VERSION
+        # CRITICAL: Only fix clearly broken fragments, don't destroy valid content
         
-        # Fix fragments at paragraph start - merge short paragraphs with next paragraph
-        # Pattern: Short fragments like "In a", "You can", "What is", etc.
-        content = re.sub(r'</p>\s*<p>\s*(In a|You can|What is|When you|If you|That\'s why|This is|How to|For example)\s*</p>\s*<p>', r' \1 ', content)  # Remove orphaned short phrases and fix structure
-        content = re.sub(r'</p>\s*<p>\s*(In a|You can|What is|When you|If you|That\'s why|This is|How to|For example)\s+', r' \1 ', content)  # Merge short phrases with next text
+        # Fix ONLY obvious sentence continuations - be very conservative
+        # Only merge if we can be sure it's a broken sentence, not valid content
         
-        # Fix truncated sentences at end of paragraphs - more specific patterns
-        # Pattern: "That's why trust is e" → remove entirely if incomplete (ends with single letter after space)
-        content = re.sub(r'<p>[^<]*\s[a-z]\s*</p>', '', content)  # Remove paragraphs ending with single letter (incomplete)
-        content = re.sub(r'\s[a-z]\s*</p>', '</p>', content)  # Remove trailing single letters before closing paragraph
+        # Fix obvious truncated sentences ONLY if they end with single orphaned letter (e.g., "trust is e")
+        content = re.sub(r'\s[a-z]\s*</p>', '</p>', content)  # Remove ONLY trailing single letters before closing paragraph
         
-        # Fix broken HTML structure after merging
+        # Fix broken HTML structure after any changes
         content = re.sub(r'<p>\s*<p>', '<p>', content)  # Remove double opening paragraph tags
         content = re.sub(r'</p>\s*</p>', '</p>', content)  # Remove double closing paragraph tags
-        
-        # Fix orphaned punctuation and merge sentences
-        content = re.sub(r'</p>\s*<p>\s*([.,;:])\s+([A-Z])', r'\1 \2', content)  # Merge punctuation + capital letter
-        content = re.sub(r'</p>\s*<p>\s*([.,;:])', r'\1', content)  # Merge orphaned punctuation
-        
-        # Fix obvious sentence continuations
-        content = re.sub(r'</p>\s*<p>\s*(However|Therefore|Also|Additionally|Furthermore|Moreover|Nevertheless)\b', r'. \1', content)  # Add period before transitions
-        content = re.sub(r'</p>\s*<p>\s*(This is why|This means that|This allows|This ensures)\b', r'. \1', content)  # Add period before explanations
         
         # STEP 0.6a: REMOVE UNWANTED KEYWORD BOLDING
         # Remove <strong> tags around keywords that shouldn't be emphasized

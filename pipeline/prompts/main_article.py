@@ -189,12 +189,21 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
 **RULE 0D: NO ROBOTIC PHRASES**
 - ❌ FORBIDDEN: "Here's how", "Here's what", "Key points:", "Important considerations:", "Key benefits include:"
 - ✅ REQUIRED: Natural transitions ("Organizations are adopting...", "Teams report...")
+- ❌ FORBIDDEN: Broken sentence patterns like "You can to implement", "What is as we", "so you can managing"
+- ✅ REQUIRED: Complete, grammatically correct sentences at ALL times
 
 **RULE 0E: CONVERSATIONAL PHRASES (MANDATORY - 12+ REQUIRED)**
 - 🚨 **CRITICAL: You MUST include 12+ conversational phrases throughout your article**
 - Required phrases: "how to", "what is", "you can", "you'll", "here's", "let's", "that's", "when you", "if you", "so you can", etc.
 - **COUNT THEM BEFORE SUBMITTING - Articles with <12 phrases will be REJECTED**
 - See detailed requirements in Section 12 below
+
+**RULE 0F: INTERNAL LINKS (MANDATORY - 3+ REQUIRED)**
+- 🚨 **CRITICAL: You MUST include minimum 3 internal links using `/magazine/` prefix**
+- **INSTANT REJECTION if fewer than 3 internal links**
+- Distribute throughout article (1 every 2-3 sections)  
+- Use natural anchor text (max 6 words each)
+- See complete list of required topics in Section 9 below
 
 ---
 
@@ -233,6 +242,13 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
    - **Longer paragraphs** (4-6 sentences) for complex concepts when needed
    - **Single sentence paragraphs** for dramatic effect or transitions
    - Keep content scannable and mobile-friendly with natural variety
+   
+   🚨 **CRITICAL WRITING QUALITY RULES:**
+   - Every sentence MUST be complete and grammatically correct
+   - Every list item MUST be a complete thought (not sentence fragments)
+   - NO broken patterns like "You can to implement" or "What is as we handle"
+   - NO incomplete list items that cut off mid-sentence
+   - VERIFY every sentence makes sense before submitting
    
    ✅ GOOD: Natural variety in paragraph lengths (engaging, readable)
    ❌ AVOIDED: Monotonous uniform paragraphs (robotic, boring)
@@ -331,16 +347,29 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
    - "How AI Adoption Transforms Enterprise Development" (48 chars, declarative)
    - "Key Strategies for AI Code Tool Selection" (45 chars, action)
 
-9. **Internal Links** (CRITICAL FORMAT): Include 3-5 links throughout article (minimum 1 every 2-3 sections). 
+9. **Internal Links** (CRITICAL - MANDATORY VALIDATION): Include 3-5 links throughout article (minimum 1 every 2-3 sections). 
    **ALL internal links MUST use `/magazine/{{slug}}` format.**
    
-   Format examples:
-   - `<a href="/magazine/ai-security-best-practices">AI Security Guide</a>`
-   - `<a href="/magazine/devops-automation">DevOps Automation</a>`
+   🚨 **CRITICAL REQUIREMENT: Your article WILL BE REJECTED if it contains fewer than 3 internal links.**
+   
+   **REQUIRED INTERNAL LINK TOPICS** (choose 3-5 from these):
+   - `<a href="/magazine/ai-security-best-practices">AI security tools</a>`
+   - `<a href="/magazine/devops-automation">DevOps automation</a>`
+   - `<a href="/magazine/cloud-security">cloud security frameworks</a>`
+   - `<a href="/magazine/incident-response-plan">incident response strategies</a>`
+   - `<a href="/magazine/zero-trust-architecture">zero trust implementation</a>`
+   - `<a href="/magazine/identity-management">identity management protocols</a>`
+   - `<a href="/magazine/network-security">network security strategies</a>`
+   - `<a href="/magazine/vulnerability-management">vulnerability scanning tools</a>`
+   - `<a href="/magazine/compliance-automation">compliance automation</a>`
+   - `<a href="/magazine/threat-intelligence">threat intelligence platforms</a>`
+   - `<a href="/magazine/security-awareness-training">security awareness programs</a>`
+   - `<a href="/magazine/penetration-testing">penetration testing methodologies</a>`
    
    ⛔ FORBIDDEN:
    - `<a href="/ai-security">...` (missing /magazine/)
    - `<a href="/blog/devops">...` (wrong prefix)
+   - Articles with 0-2 internal links (INSTANT REJECTION)
    
    ✅ REQUIRED:
    - All slugs must start with `/magazine/`
@@ -471,7 +500,13 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
     </ul>
     ```
     
-    ✅ REQUIRED - List items as structured summaries with specifics:
+    ✅ REQUIRED - List items as complete thoughts with specifics:
+    
+    🚨 **CRITICAL LIST QUALITY RULES:**
+    - Every list item MUST be a complete sentence or complete thought
+    - NO sentence fragments or incomplete items
+    - Each item should be 10-25 words for proper depth
+    - Items must provide value beyond repeating paragraph text
     
     **Example 1 - Bullet List (unordered features):**
     ```
@@ -483,6 +518,13 @@ You are writing a long-form blog post in {company_name}'s voice, fully optimized
       <li><strong>Efficiency:</strong> Context-aware suggestions reduce time spent on documentation lookups and API reference searches</li>
       <li><strong>Quality:</strong> Built-in best practices help junior developers write cleaner code from day one, reducing technical debt</li>
     </ul>
+    ```
+    
+    ❌ **FORBIDDEN LIST PATTERNS (WILL BE REJECTED):**
+    ```
+    <li>The cybersecurity landscape has shifted dramatically, driven by the relentless sophistication of</li>  ← Incomplete sentence
+    <li>This investment is not without cause; the average cost of a data</li>  ← Cut off mid-thought
+    <li>has hit a record $10.22 million, making effective prevention a financial imperative</li>  ← Fragment
     ```
     
     **Example 2 - Numbered List (ranked/ordered items):**
@@ -1015,11 +1057,25 @@ VALIDATION RULES (Output will be REJECTED if violated):
 3. ❌ **MISSING LISTS: Less than 5-8 lists throughout article → REJECTED** (MUST include varied list structures)
 4. ❌ **MONOTONOUS PARAGRAPHS: All paragraphs same length → REJECTED** (MUST vary paragraph lengths naturally)
 5. ❌ Any case study without Company + Metric + Timeframe → REJECTED
-7. ❌ **FAQ COUNT: Less than 5 FAQ items generated → REJECTED** (MUST have faq_01 through faq_05 with questions and answers)
-8. ❌ **PAA COUNT: Less than 3 PAA items generated → REJECTED** (MUST have paa_01 through paa_03 with questions and answers)
-9. ✅ Must have 2+ case studies (30+ words each)
-10. ✅ Must have natural paragraph variety for engaging flow and readability
-11. ✅ Use <ul><li> for feature lists, NEVER standalone <p> labels
+6. ❌ **INTERNAL LINKS: Less than 3 internal links → INSTANT REJECTION** (MUST have minimum 3 `/magazine/` links)
+7. ❌ **CONTENT QUALITY VIOLATIONS → INSTANT REJECTION:**
+   - Incomplete sentences or broken grammar patterns
+   - List items that are sentence fragments or cut off mid-thought
+   - Broken patterns like "You can to implement", "What is as we handle"
+   - Any content that doesn't make grammatical sense
+8. ❌ **FAQ COUNT: Less than 5 FAQ items generated → REJECTED** (MUST have faq_01 through faq_05 with questions and answers)
+9. ❌ **PAA COUNT: Less than 3 PAA items generated → REJECTED** (MUST have paa_01 through paa_03 with questions and answers)
+10. ✅ Must have 2+ case studies (30+ words each)
+11. ✅ Must have natural paragraph variety for engaging flow and readability
+12. ✅ Use <ul><li> for feature lists, NEVER standalone <p> labels
+13. ✅ **CONTENT QUALITY REQUIREMENTS:**
+    - Every sentence must be grammatically complete
+    - Every list item must be a complete thought (10-25 words)
+    - All content must read naturally and professionally
+14. ✅ **INTERNAL LINKING REQUIREMENTS:**
+    - Minimum 3 internal links using `/magazine/` prefix
+    - Links distributed throughout article (1 every 2-3 sections)
+    - Natural anchor text (max 6 words each)
 
 ALWAYS AT ANY TIMES STRICTLY OUTPUT IN THE JSON FORMAT. No extra keys or commentary."""
 
