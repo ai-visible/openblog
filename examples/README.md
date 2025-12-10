@@ -9,7 +9,8 @@ This directory contains examples of the complete OpenBlog Isaac Security pipelin
 **Topic:** Implementing Zero Trust Security Architecture in 2025
 
 **Generated Files:**
-- `zero-trust-security-architecture-guide.pdf` - Publication-ready PDF (114.2 KB)
+- `zero-trust-security-architecture-guide.pdf` - Basic PDF without images (114.2 KB)
+- `zero-trust-enhanced-with-images.pdf` - **Enhanced PDF with images and margins (9.4 MB)**
 - `zero-trust-security-architecture-guide.screenshot.png` - Debug screenshot for quality verification
 
 **Article Specifications:**
@@ -27,6 +28,9 @@ This directory contains examples of the complete OpenBlog Isaac Security pipelin
 ✅ **Content Quality:** No broken sentences, incomplete lists, or AI markers  
 ✅ **Professional Formatting:** Publication-ready with proper typography  
 ✅ **Real Data:** Current statistics, case studies, and industry benchmarks  
+✅ **High-Quality Images:** 5 embedded images with captions and proper spacing  
+✅ **Print-Optimized Margins:** 25mm top/bottom, 20mm left/right for professional appearance  
+✅ **Page Break Control:** Sections stay together, no cut-off content  
 
 ## Generation Process
 
