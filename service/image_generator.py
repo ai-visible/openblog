@@ -57,12 +57,12 @@ class ImageGenerationResponse:
 class ImageGenerator:
     """
     Handles blog image generation using:
-    - Google GenAI SDK (gemini-2.5-flash-image) - Direct SDK, consistent with blog generation
+    - Google GenAI SDK (gemini-3-pro-image-preview) - Gemini 3 Pro Image model
     - Google Drive for storage
     """
 
     # Google GenAI SDK config
-    IMAGE_MODEL = "gemini-2.5-flash-image"  # Google's image generation model
+    IMAGE_MODEL = "gemini-3-pro-image-preview"  # Gemini 3 Pro Image (Nano Banana Pro)
     
     # Drive folder structure: Project → Content Output → Graphics (Final)
     CONTENT_OUTPUT_FOLDER = "04 - Content Output"
@@ -385,7 +385,7 @@ class ImageGenerator:
 
     async def _generate_image(self, prompt: str, max_retries: int = 3) -> bytes:
         """
-        Generate image using Google GenAI SDK (gemini-2.5-flash-image).
+        Generate image using Google GenAI SDK (gemini-3-pro-image-preview).
         Includes retry logic with exponential backoff.
         """
         last_error = None

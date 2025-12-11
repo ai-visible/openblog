@@ -47,11 +47,10 @@ class CitationsStage(Stage):
     - Formatting as HTML
     - Validation (optional URL checks)
     
-    Performance Optimization:
-    - Uses Gemini Flash 2.5 (gemini-2.5-flash) for citation validation
-    - Flash is sufficient for web search and URL extraction tasks
-    - ~10x cheaper and 2-3x faster than Pro model
-    - Uses v1beta API version (required for Flash models)
+    Performance Notes:
+    - Uses Gemini 3 Pro (gemini-3-pro-preview) for citation validation
+    - Required for complex tool calling (web search + JSON output + validation)
+    - Flash 2.5 cannot handle multi-tool workflows reliably
     """
 
     stage_num = 4
@@ -217,11 +216,10 @@ class CitationsStage(Stage):
         # Initialize validator if needed
         if not self.validator:
             if not self.gemini_client:
-                # Use Gemini Flash 2.5 for citation validation (faster and cheaper)
-                # Flash is sufficient for simple web search and URL extraction tasks
-                # Flash supports GoogleSearch tool and is ~10x cheaper than Pro
-                # Note: Using gemini-2.5-flash (without -preview) with v1beta API
-                self.gemini_client = GeminiClient(model="gemini-2.5-flash")
+                # Use Gemini 3 Pro for citation validation (tool calling required)
+                # Use Gemini 3 Pro for web search + JSON + tool calling capabilities
+                # 2.5 Flash cannot handle complex tool calling with JSON output reliably
+                self.gemini_client = GeminiClient(model="gemini-3-pro-preview")
             self.validator = CitationURLValidator(
                 gemini_client=self.gemini_client,
                 max_attempts=self.config.max_validation_attempts,

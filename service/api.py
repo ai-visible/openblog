@@ -1420,11 +1420,11 @@ class ImageGenerationResponseModel(BaseModel):
 @app.post("/generate-image", response_model=ImageGenerationResponseModel)
 async def generate_image(request: ImageGenerationRequestModel):
     """
-    Generate an AI image for a blog article using Google GenAI SDK (gemini-2.5-flash-image).
+    Generate an AI image for a blog article using Google GenAI SDK (gemini-3-pro-image-preview).
     
     Steps:
     1. Build image prompt from article context
-    2. Generate image using Google GenAI SDK (gemini-2.5-flash-image)
+    2. Generate image using Google GenAI SDK (gemini-3-pro-image-preview)
     3. Upload to Google Drive
     4. Make publicly viewable
     5. Return URL and metadata
