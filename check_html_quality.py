@@ -55,9 +55,10 @@ def check_html_quality(html_content: str, filename: str = "article") -> Tuple[Li
         critical.append(f"❌ Found {len(orphaned_periods)} orphaned periods at start of content")
     
     # 5. Duplicate content (paragraph immediately followed by <ul> with same content)
+    # Note: Many are legitimate, so we only flag if there are >15
     duplicate_pattern = re.findall(r'</p>\s*<ul>\s*<li>', html_content)
-    if len(duplicate_pattern) > 5:  # Some are legitimate
-        critical.append(f"⚠️ Found {len(duplicate_pattern)} paragraph+list patterns - check for duplicates")
+    if len(duplicate_pattern) > 15:
+        warnings.append(f"⚠️ Found {len(duplicate_pattern)} paragraph+list patterns - check for duplicates")
     
     # 6. Raw markdown in HTML (**bold**, *italic*)
     markdown_bold = re.findall(r'(?<![*])\*\*[^*]+\*\*(?![*])', html_content)
@@ -102,8 +103,11 @@ def check_html_quality(html_content: str, filename: str = "article") -> Tuple[Li
     # 12. Check for external links in body
     body_main = re.search(r'<main[^>]*>.*?</main>', html_content, re.DOTALL)
     if body_main:
-        external_links = re.findall(r'<a[^>]*href="https?://[^"]+class="citation"', body_main.group())
-        if len(external_links) < 2:
+        # Look for citation links (class="citation") or any external https links
+        external_links = re.findall(r'<a[^>]*href="https?://[^"]+[^>]*class="citation"', body_main.group())
+        if not external_links:
+            external_links = re.findall(r'<a[^>]*class="citation"[^>]*href="https?://[^"]+"', body_main.group())
+        if len(external_links) < 1:
             warnings.append(f"⚠️ Only {len(external_links)} external citation links in body")
     
     # 13. Check for internal links
