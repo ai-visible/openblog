@@ -252,7 +252,9 @@ class HTMLCleaner:
             # Parse with lxml (strict) or html.parser (fallback)
             try:
                 soup = BeautifulSoup(html, 'lxml')
-            except:
+            except (ImportError, Exception) as e:
+                # lxml not available or parsing failed, use html.parser
+                logger.debug(f"lxml parser unavailable or failed, using html.parser: {e}")
                 soup = BeautifulSoup(html, 'html.parser')
             
             # Get body content only (removes auto-added html/body tags)

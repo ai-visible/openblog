@@ -18,6 +18,7 @@ from ..utils.schema_markup import generate_all_schemas, render_schemas_as_json_l
 from ..models.output_schema import ArticleOutput
 from .markdown_processor import convert_markdown_to_html
 from .citation_linker import link_natural_citations
+from .content_cleanup_pipeline import cleanup_content as pipeline_cleanup
 
 logger = logging.getLogger(__name__)
 
@@ -1878,6 +1879,10 @@ class HTMLRenderer:
         
         # Match complete <ul>...</ul> blocks and convert if needed
         content = re.sub(r'<ul>(.*?)</ul>', convert_list_if_numbered, content, flags=re.DOTALL)
+        
+        # FINAL PASS: Run through consolidated cleanup pipeline for any remaining issues
+        # This catches patterns that might have been missed by earlier regex operations
+        content = pipeline_cleanup(content)
         
         return content.strip()
 
