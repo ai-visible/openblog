@@ -1514,15 +1514,22 @@ class HTMLRenderer:
             (r'<p>\s*Important considerations\s*:?\s*</p>', ''),
             (r'<p>\s*Key benefits include\s*:?\s*</p>', ''),
             (r'<p>\s*Here\'?s what you need to know\s*:?\s*</p>', ''),
-            # Also catch inline versions (not followed by list)
-            (r'Here are key points\s*:\s*', ''),
-            (r'Important considerations\s*:\s*', ''),
-            (r'Key benefits include\s*:\s*', ''),
-            (r'Here\'?s what you need to know\s*:\s*', ''),
+            # Also catch inline versions (not followed by list) - NO space required after colon
+            (r'Here are key points\s*:', ''),
+            (r'Important considerations\s*:', ''),
+            (r'Key benefits include\s*:', ''),
+            (r'Here\'?s what you need to know\s*:', ''),
+            (r'matters\s*:', ''),  # Catch "Why this matters:" etc
         ]
         for pattern, replacement in list_intro_patterns:
             content = re.sub(pattern, replacement, content, flags=re.IGNORECASE)
         logger.info("🗑️ Removed duplicate summary list introductions")
+        
+        # CRITICAL: Strip [N] academic citation markers from body content
+        # These should NOT appear inline - only in the Sources section
+        content = re.sub(r'\s*\[\d+\]\s*', ' ', content)  # Replace with single space
+        content = re.sub(r'\s{2,}', ' ', content)  # Clean up double spaces
+        logger.info("🗑️ Stripped academic citation markers [N] from body")
         
         # Pattern 3: Remove plain text labels with only citations (no HTML)
         # Matches: "Security Compliance: [2][3]" on its own line
