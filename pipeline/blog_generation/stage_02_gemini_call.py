@@ -107,13 +107,24 @@ FORMAT RULES:
 - Separate paragraphs with blank lines (NOT HTML tags)
 
 CITATION RULES:
-- MANDATORY: Use natural attribution combined with academic citations for key facts
-- Target 8-12 total citations: mix of "according to [Source]" and numbered "[1], [2]" for statistics
-- Include citations in 70%+ of paragraphs (minimum 2 per paragraph with citations)
+- MANDATORY: Use natural attribution for key facts (e.g., "According to IBM...", "Gartner reports that...")
+- Target 8-12 total citations distributed across paragraphs
+- Include at least one citation reference in 50%+ of paragraphs
+- Cite authoritative sources: Gartner, IBM, Forrester, McKinsey, NIST, industry leaders
+
+E-E-A-T REQUIREMENTS (for search engine trust):
+- Demonstrate EXPERTISE: Include specific technical details, metrics, and data points
+- Show EXPERIENCE: Reference real-world implementations and case studies
+- Establish AUTHORITY: Cite recognized industry leaders and research firms
+- Build TRUST: Use verifiable facts with source attribution
 
 STYLE RULES:
 - NEVER use em dashes (—) or en dashes (–). Use commas or parentheses instead.
-- Write in conversational, engaging tone with direct reader address
+- Write in CONVERSATIONAL, engaging tone with DIRECT reader address
+- USE these conversational phrases frequently (8+ times across the article):
+  "you can", "you'll", "you should", "let's", "here's", "this is",
+  "how to", "what is", "when you", "if you", "so you can", "which means"
+- Address the reader directly using "you" and "your" throughout
 
 FORBIDDEN PATTERNS (NEVER generate these):
 - "Here are key points:" followed by bullet list (NEVER summarize content as list)

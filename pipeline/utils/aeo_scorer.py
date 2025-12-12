@@ -77,7 +77,7 @@ class AEOScorer:
         - Direct answer field exists (10 points)
         - Direct answer length 40-60 words (5 points)
         - Direct answer contains primary keyword (5 points)
-        - Direct answer contains citation [1] (5 points)
+        - Direct answer contains citation (academic OR natural) (5 points)
         """
         score = 0.0
         
@@ -85,10 +85,11 @@ class AEOScorer:
         if output.Direct_Answer and output.Direct_Answer.strip():
             score += 10.0
             
-            direct_answer_lower = output.Direct_Answer.lower()
+            direct_answer = output.Direct_Answer
+            direct_answer_lower = direct_answer.lower()
             
             # Check length (40-60 words ideal)
-            word_count = len(output.Direct_Answer.split())
+            word_count = len(direct_answer.split())
             if 40 <= word_count <= 60:
                 score += 5.0
             elif 30 <= word_count < 40 or 60 < word_count <= 80:
@@ -98,15 +99,21 @@ class AEOScorer:
             if primary_keyword.lower() in direct_answer_lower:
                 score += 5.0
             
-            # Check if contains citation [1]
-            if re.search(r'\[1\]', output.Direct_Answer):
+            # Check if contains citation (academic [1] OR natural language)
+            has_academic_citation = re.search(r'\[\d+\]', direct_answer)
+            has_natural_citation = any([
+                re.search(r'according to [A-Z]', direct_answer, re.IGNORECASE),
+                re.search(r'[A-Z][a-z]+ (reports?|states?|notes?|found)', direct_answer),
+                re.search(r'research (by|from) [A-Z]', direct_answer, re.IGNORECASE),
+            ])
+            
+            if has_academic_citation or has_natural_citation:
                 score += 5.0
         else:
             # Fallback: check if intro starts with direct answer
             if output.Intro:
                 intro_words = output.Intro.split()[:60]
                 if len(intro_words) >= 30:
-                    # Check if intro directly answers (contains question words or definitive statements)
                     intro_text = " ".join(intro_words).lower()
                     if primary_keyword.lower() in intro_text:
                         score += 5.0  # Partial credit
@@ -168,67 +175,99 @@ class AEOScorer:
         """
         Score citation clarity for AI extraction (15 points).
         
+        Supports BOTH citation styles:
+        - Academic: [1], [2], [3]
+        - Natural language: "according to IBM", "Gartner reports", "research by McKinsey"
+        
         Checks:
-        - Citations formatted as [1], [2] (5 points)
-        - Sources list exists and matches citations (5 points)
+        - Citations present (academic or natural) (5 points)
+        - Sources list exists and is populated (5 points)
         - Citations distributed per-paragraph (5 points)
         """
         score = 0.0
         
         all_content = output.Intro + " " + self._get_all_section_content(output)
+        content_lower = all_content.lower()
         
-        # Check citation format [1], [2], etc.
-        citation_pattern = r'\[\d+\]'
-        citations = re.findall(citation_pattern, all_content)
+        # Check BOTH citation formats
+        # 1. Academic: [1], [2], etc.
+        academic_citations = re.findall(r'\[\d+\]', all_content)
         
-        if citations:
+        # 2. Natural language citations (inline attribution)
+        natural_citation_patterns = [
+            r'according to [A-Z][a-z]+',
+            r'[A-Z][a-z]+ reports? that',
+            r'[A-Z][a-z]+ states? that',
+            r'[A-Z][a-z]+ notes? that',
+            r'[A-Z][a-z]+ predicts?',
+            r'[A-Z][a-z]+ estimates?',
+            r'[A-Z][a-z]+ found that',
+            r'[A-Z][a-z]+ shows? that',
+            r'[A-Z][a-z]+ highlights?',
+            r'research by [A-Z][a-z]+',
+            r'report by [A-Z][a-z]+',
+            r'study by [A-Z][a-z]+',
+            r'data from [A-Z][a-z]+',
+            r"[A-Z][a-z]+'s research",
+            r"[A-Z][a-z]+'s report",
+        ]
+        natural_citations = []
+        for pattern in natural_citation_patterns:
+            natural_citations.extend(re.findall(pattern, all_content, re.IGNORECASE))
+        
+        total_citations = len(academic_citations) + len(natural_citations)
+        
+        # Citation presence (5 points)
+        if total_citations >= 8:
             score += 5.0
+        elif total_citations >= 5:
+            score += 4.0
+        elif total_citations >= 3:
+            score += 3.0
+        elif total_citations > 0:
+            score += 2.0
+        
+        # Sources list exists (5 points)
+        if output.Sources and output.Sources.strip():
+            source_lines = [line.strip() for line in output.Sources.split('\n') if line.strip()]
+            if len(source_lines) >= 5:
+                score += 5.0
+            elif len(source_lines) >= 3:
+                score += 4.0
+            elif len(source_lines) > 0:
+                score += 2.5
+        
+        # Citation distribution per-paragraph (5 points)
+        # Check both academic AND natural citations per paragraph
+        paragraphs = re.findall(r'<p[^>]*>.*?</p>', all_content, re.DOTALL)
+        if not paragraphs:
+            # Fallback: split by double newlines
+            paragraphs = [p for p in all_content.split('\n\n') if p.strip()]
+        
+        paragraphs_with_citations = 0
+        for para in paragraphs:
+            # Count academic citations
+            para_academic = len(re.findall(r'\[\d+\]', para))
+            # Count natural citations
+            para_natural = 0
+            for pattern in natural_citation_patterns:
+                para_natural += len(re.findall(pattern, para, re.IGNORECASE))
             
-            # Check if sources match citations
-            if output.Sources and output.Sources.strip():
-                # Extract citation numbers
-                citation_numbers = set()
-                for citation in citations:
-                    num = re.search(r'\d+', citation)
-                    if num:
-                        citation_numbers.add(int(num.group()))
-                
-                # Count sources (parse Sources string)
-                source_lines = [line.strip() for line in output.Sources.split('\n') if line.strip() and line.strip().startswith('[')]
-                source_indices = set()
-                for line in source_lines:
-                    match = re.search(r'\[(\d+)\]', line)
-                    if match:
-                        source_indices.add(int(match.group(1)))
-                
-                # Score based on match
-                if citation_numbers.issubset(source_indices) and len(source_indices) > 0:
-                    score += 5.0
-                elif len(citation_numbers & source_indices) > 0:
-                    score += 2.5
-            
-            # Check citation distribution per-paragraph
-            # Extract paragraphs from content
-            paragraphs = re.findall(r'<p[^>]*>.*?</p>', all_content, re.DOTALL)
-            paragraphs_with_citations = 0
-            for para in paragraphs:
-                para_citations = re.findall(citation_pattern, para)
-                if len(para_citations) >= 2:  # 2-3 citations per paragraph
-                    paragraphs_with_citations += 1
-            
-            # Score based on distribution (target: 60%+ paragraphs have 2+ citations)
-            if paragraphs:
-                distribution_ratio = paragraphs_with_citations / len(paragraphs)
-                if distribution_ratio >= 0.6:
-                    score += 5.0
-                elif distribution_ratio >= 0.4:
-                    score += 3.0
-                elif distribution_ratio >= 0.2:
-                    score += 1.0
-        else:
-            # No citations found
-            if output.Sources and output.Sources.strip():
-                score += 2.5  # Sources exist but not cited
+            # A paragraph is well-cited if it has 1+ citations (either style)
+            if para_academic + para_natural >= 1:
+                paragraphs_with_citations += 1
+        
+        # Score based on distribution (target: 40%+ paragraphs have citations)
+        if paragraphs:
+            distribution_ratio = paragraphs_with_citations / len(paragraphs)
+            if distribution_ratio >= 0.5:
+                score += 5.0
+            elif distribution_ratio >= 0.3:
+                score += 3.0
+            elif distribution_ratio >= 0.15:
+                score += 1.5
+        
+        logger.debug(f"Citation scoring: {len(academic_citations)} academic, {len(natural_citations)} natural, {paragraphs_with_citations}/{len(paragraphs)} paragraphs cited")
         
         return min(score, 15.0)
 
