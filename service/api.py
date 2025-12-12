@@ -490,7 +490,7 @@ def build_response_from_context(
             "table_of_contents": toc_entries,
             "faq": faq_entries,
             "paa": paa_entries,
-            **{f"section_{i:02d}_heading": s.heading for i, s in enumerate(sections, 1) if s},
+            **{f"section_{i:02d}_heading": s.title for i, s in enumerate(sections, 1) if s},
             **{f"section_{i:02d}_content": s.content for i, s in enumerate(sections, 1) if s},
         }
         similarity_report = check_for_duplicates(article_for_check)
