@@ -43,7 +43,13 @@ pip install -r requirements.txt
 
 ```bash
 # Required
-OPENROUTER_API_KEY=your_openrouter_key
+GEMINI_API_KEY=your_gemini_api_key
+
+# Optional - DataForSEO fallback (when Google Search quota exhausted)
+# Cost: $0.50 per 1,000 queries - Standard mode (async task-based)
+# Automatically activates when Google Search returns 429/quota errors
+DATAFORSEO_LOGIN=your_dataforseo_email
+DATAFORSEO_PASSWORD=your_dataforseo_password
 
 # Optional - for Google Drive integration
 GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'

@@ -8,6 +8,7 @@ Uses google-genai SDK directly for:
   - Provides real-time web information
 - Response parsing (JSON extraction from plain text)
 - Retry logic with exponential backoff
+- DataForSEO fallback when Google Search quota is exhausted
 
 Configuration:
 - Model: gemini-3.0-pro-preview (default, Gemini 3.0 Pro Preview)
@@ -15,6 +16,7 @@ Configuration:
 - Response mime type: text/plain (NOT application/json)
 - Temperature: 0.2 (consistency)
 - Tools: Google Search (includes URL context via search results)
+- Fallback: DataForSEO Standard mode ($0.50/1k queries)
 """
 
 import os
@@ -28,6 +30,21 @@ from typing import Optional, Dict, Any, List
 from ..models.output_schema import ArticleOutput, ComparisonTable
 
 logger = logging.getLogger(__name__)
+
+# Lazy import for DataForSEO fallback to avoid circular imports
+_search_executor = None
+
+def _get_search_executor():
+    """Lazy initialization of search executor for DataForSEO fallback."""
+    global _search_executor
+    if _search_executor is None:
+        try:
+            from .search_tool_executor import get_search_executor
+            _search_executor = get_search_executor()
+        except ImportError:
+            logger.warning("DataForSEO fallback not available - search_tool_executor not found")
+            return None
+    return _search_executor
 
 # Default models - using Gemini 3.0 Pro Preview
 DEFAULT_MODEL = "gemini-3-pro-preview"  # Gemini 3.0 Pro Preview with search grounding (includes URL context)
@@ -364,10 +381,198 @@ class GeminiClient:
                 else:
                     logger.error(f"All {self.MAX_RETRIES} retries failed: {error_type}")
 
+        # All retries failed - check if we should try DataForSEO fallback
+        if enable_grounding and self._should_use_search_fallback(last_error):
+            logger.warning("🚨 Google Search quota exhausted, attempting DataForSEO fallback...")
+            fallback_result = await self._try_dataforseo_fallback(prompt, last_error)
+            if fallback_result:
+                return fallback_result
+            logger.error("❌ DataForSEO fallback also failed")
+
         # All retries failed
         raise Exception(
             f"AI API call failed after {self.MAX_RETRIES} retries: {last_error}"
         )
+
+    def _should_use_search_fallback(self, error: Exception) -> bool:
+        """
+        Check if error indicates Google Search quota exhaustion.
+        
+        Args:
+            error: The exception from the failed API call
+            
+        Returns:
+            True if DataForSEO fallback should be attempted
+        """
+        if not error:
+            return False
+            
+        error_str = str(error).lower()
+        
+        # Patterns indicating Google Search quota exhaustion
+        quota_patterns = [
+            "resource_exhausted",
+            "quota",
+            "rate limit",
+            "429",
+            "too many requests",
+            "usage limit",
+            "daily limit",
+            "search grounding",
+            "google search",
+        ]
+        
+        for pattern in quota_patterns:
+            if pattern in error_str:
+                logger.debug(f"Detected quota pattern: {pattern}")
+                return True
+                
+        return False
+
+    async def _try_dataforseo_fallback(
+        self, 
+        prompt: str, 
+        original_error: Exception
+    ) -> Optional[str]:
+        """
+        Attempt DataForSEO fallback when Google Search fails.
+        
+        This is a best-effort fallback - it extracts the main topic from the
+        prompt and performs a DataForSEO search, then retries content generation
+        with the search results injected into the prompt.
+        
+        Args:
+            prompt: The original prompt
+            original_error: The error from Google Search
+            
+        Returns:
+            Response text if fallback succeeds, None otherwise
+        """
+        executor = _get_search_executor()
+        if not executor or not executor.is_fallback_available():
+            logger.warning("DataForSEO fallback not available")
+            return None
+            
+        try:
+            # Extract main query from prompt (look for keyword or topic)
+            query = self._extract_search_query_from_prompt(prompt)
+            if not query:
+                logger.warning("Could not extract search query from prompt")
+                return None
+                
+            logger.info(f"🔍 DataForSEO fallback search: '{query}'")
+            
+            # Execute fallback search
+            search_results = await executor.execute_search_with_fallback(
+                query=query,
+                primary_error=original_error,
+                max_results=5,
+            )
+            
+            if not search_results or "failed" in search_results.lower():
+                logger.warning(f"DataForSEO search failed: {search_results}")
+                return None
+                
+            # Inject search results into prompt and retry WITHOUT grounding
+            enhanced_prompt = self._inject_search_results(prompt, search_results)
+            
+            logger.info("🔄 Retrying content generation with DataForSEO results...")
+            
+            # Retry without Google Search grounding (we have DataForSEO results now)
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.client.models.generate_content(
+                    model=self.MODEL,
+                    contents=enhanced_prompt,
+                    config=self._genai.types.GenerateContentConfig(
+                        temperature=self.TEMPERATURE,
+                        max_output_tokens=self.MAX_OUTPUT_TOKENS,
+                        tools=None,  # No grounding - we injected search results
+                    )
+                )
+            )
+            
+            if response and hasattr(response, "text") and response.text:
+                logger.info(f"✅ DataForSEO fallback succeeded ({len(response.text)} chars)")
+                return response.text
+                
+            return None
+            
+        except Exception as e:
+            logger.error(f"DataForSEO fallback error: {e}")
+            return None
+
+    def _extract_search_query_from_prompt(self, prompt: str) -> Optional[str]:
+        """
+        Extract the main search query from a content generation prompt.
+        
+        Looks for keyword/topic patterns in the prompt.
+        
+        Args:
+            prompt: The full generation prompt
+            
+        Returns:
+            Extracted query string or None
+        """
+        import re
+        
+        # Common patterns for keyword/topic in prompts
+        patterns = [
+            r'primary\s*keyword[:\s]*["\']?([^"\'\n,]+)["\']?',
+            r'target\s*keyword[:\s]*["\']?([^"\'\n,]+)["\']?',
+            r'keyword[:\s]*["\']?([^"\'\n,]+)["\']?',
+            r'topic[:\s]*["\']?([^"\'\n,]+)["\']?',
+            r'write\s+(?:about|on)[:\s]*["\']?([^"\'\n,]+)["\']?',
+            r'article\s+(?:about|on)[:\s]*["\']?([^"\'\n,]+)["\']?',
+        ]
+        
+        prompt_lower = prompt.lower()
+        
+        for pattern in patterns:
+            match = re.search(pattern, prompt_lower, re.IGNORECASE)
+            if match:
+                query = match.group(1).strip()
+                if len(query) >= 3 and len(query) <= 100:
+                    return query
+                    
+        # Fallback: use first significant line that looks like a topic
+        lines = prompt.split('\n')
+        for line in lines[:10]:  # Check first 10 lines
+            line = line.strip()
+            if len(line) >= 5 and len(line) <= 100 and not line.startswith('#'):
+                # Skip common prompt instructions
+                skip_words = ['write', 'create', 'generate', 'the', 'you', 'please', 'make']
+                first_word = line.split()[0].lower() if line.split() else ''
+                if first_word not in skip_words:
+                    return line
+                    
+        return None
+
+    def _inject_search_results(self, prompt: str, search_results: str) -> str:
+        """
+        Inject DataForSEO search results into the prompt.
+        
+        Args:
+            prompt: Original prompt
+            search_results: Formatted search results from DataForSEO
+            
+        Returns:
+            Enhanced prompt with search results
+        """
+        injection = f"""
+## Web Research Results (from DataForSEO)
+
+The following search results provide current information for your article:
+
+{search_results}
+
+Use these sources to inform your content. Cite specific sources where appropriate.
+
+---
+
+"""
+        return injection + prompt
 
     def _is_retryable_error(self, error: Exception) -> bool:
         """
