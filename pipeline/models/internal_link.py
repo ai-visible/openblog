@@ -91,17 +91,32 @@ class InternalLinkList(BaseModel):
         return new_list
 
     def deduplicate_domains(self) -> "InternalLinkList":
-        """Keep only one link per domain."""
+        """
+        Keep only one link per domain for EXTERNAL links.
+        For internal links (same domain), deduplicate by URL path instead.
+        """
         seen_domains = set()
+        seen_paths = set()
         deduplicated = []
 
         for link in self.links:
-            if link.domain and link.domain not in seen_domains:
+            # Extract path from URL for internal link deduplication
+            path = link.url.split('/')[-1] if '/' in link.url else link.url
+            
+            # For internal links (scaile.tech), deduplicate by path
+            if link.domain and ('scaile' in link.domain.lower()):
+                if path not in seen_paths:
+                    deduplicated.append(link)
+                    seen_paths.add(path)
+            # For external links, deduplicate by domain
+            elif link.domain and link.domain not in seen_domains:
                 deduplicated.append(link)
                 seen_domains.add(link.domain)
             elif not link.domain:
-                # If no domain specified, always include
-                deduplicated.append(link)
+                # If no domain specified, deduplicate by full URL
+                if link.url not in seen_paths:
+                    deduplicated.append(link)
+                    seen_paths.add(link.url)
 
         new_list = InternalLinkList(section_title=self.section_title)
         new_list.links = deduplicated
