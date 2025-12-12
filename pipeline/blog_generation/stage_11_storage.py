@@ -86,10 +86,11 @@ class StorageStage(Stage):
         passed_quality = context.quality_report.get("passed", False)
         if not passed_quality:
             critical_issues = context.quality_report.get("critical_issues", [])
-            logger.warning(f"Quality checks failed: {critical_issues[:2]} - CONTINUING for testing")
-            # TESTING MODE: Continue with HTML generation despite quality gate failure
-            # TODO: Remove this bypass for production deployment
-            # Original behavior would return here to block HTML generation
+            aeo_score = context.quality_report.get("aeo_score", 0)
+            logger.warning(f"Quality checks failed (AEO: {aeo_score}): {critical_issues[:2]}")
+            # Quality gate enforced - do not generate HTML for failing articles
+            # This ensures only high-quality content is published
+            raise ValueError(f"Quality gate failed: AEO {aeo_score}/100, issues: {critical_issues[:2]}")
 
         # Step 3: Extract FAQ/PAA items and generate article URL
         logger.debug("Extracting FAQ/PAA items and generating article URL...")

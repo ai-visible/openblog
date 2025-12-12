@@ -183,9 +183,8 @@ class DataFetchStage(Stage):
             "company_competitors": [],  # Empty for now
         }
 
-        # TODO: Add Gemini analysis for company info
-        # TODO: Add website scraping for metadata
-        # TODO: Add sitemap fetching for internal links
+        # NOTE: Sitemap fetching is implemented in _crawl_company_sitemap()
+        # Future enhancements: Gemini analysis for company info, website scraping for metadata
 
         logger.debug(f"Auto-detected company data: {company_data}")
         return company_data

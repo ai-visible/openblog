@@ -502,9 +502,9 @@ class RewriteEngine:
         
         if field_path == "all_sections":
             # Split content back into sections
-            # (This is tricky - for now, just update all sections with the full content)
-            # TODO: Implement smart splitting
-            self.logger.warning("all_sections update not fully implemented yet")
+            # BACKLOG: Implement smart splitting for bulk section updates
+            # Current behavior: updates not applied to preserve existing content
+            self.logger.warning("all_sections bulk update skipped (use individual section updates)")
             return updated
         
         elif field_path == "all_content":

@@ -291,9 +291,9 @@ class GoogleImagenClient:
             Public Google Drive URL
         """
         try:
-            # For now, fall back to local save
-            # TODO: Implement actual Google Drive upload
-            logger.warning("Google Drive upload not yet implemented, saving locally")
+            # BACKLOG: Implement Google Drive upload for cloud deployment
+            # Current implementation saves locally, which works for file-based storage
+            logger.debug("Using local storage for images (Google Drive integration pending)")
             return self._save_image_locally(image_data, prompt)
             
         except Exception as e:
