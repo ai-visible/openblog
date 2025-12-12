@@ -231,11 +231,18 @@ class InternalLinksStage(Stage):
                     )
 
         # Priority 3: Sitemap pages from context (if available)
-        if context.sitemap_pages and hasattr(context.sitemap_pages, 'pages'):
-            logger.info(f"Processing {len(context.sitemap_pages.pages)} sitemap pages from context")
-            # Prefer blog pages, but include others if relevant
-            blog_pages = context.sitemap_pages.get_blogs(min_confidence=0.7)
-            all_pages = blog_pages if blog_pages else context.sitemap_pages.pages[:50]  # Limit to 50 for performance
+        # Check both context.sitemap_pages AND context.sitemap_data._sitemap_pages_object
+        sitemap_pages_obj = None
+        if hasattr(context, 'sitemap_pages') and context.sitemap_pages and hasattr(context.sitemap_pages, 'pages'):
+            sitemap_pages_obj = context.sitemap_pages
+        elif hasattr(context, 'sitemap_data') and context.sitemap_data and '_sitemap_pages_object' in context.sitemap_data:
+            sitemap_pages_obj = context.sitemap_data['_sitemap_pages_object']
+        
+        if sitemap_pages_obj and hasattr(sitemap_pages_obj, 'pages'):
+            logger.info(f"Processing {len(sitemap_pages_obj.pages)} sitemap pages from context")
+            # Use ALL pages - services, solutions, case studies are all valid internal link targets
+            # Not just blog pages! Any relevant page improves SEO and user experience
+            all_pages = sitemap_pages_obj.pages[:100]  # Limit to 100 for performance
             
             for page in all_pages:
                 if not page.url:

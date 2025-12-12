@@ -300,7 +300,9 @@ class DataFetchStage(Stage):
                 "company_urls": company_urls[:4],     # Limit company pages
                 "page_summary": page_summary,
                 "fetch_timestamp": sitemap_pages.fetch_timestamp,
-                "site_structure": self._analyze_site_structure(sitemap_pages)
+                "site_structure": self._analyze_site_structure(sitemap_pages),
+                # CRITICAL: Include raw sitemap_pages for Stage 5 internal links
+                "_sitemap_pages_object": sitemap_pages,
             }
             
             logger.info(f"Sitemap analysis complete: {sitemap_data['total_pages']} total pages, {sitemap_data['blog_count']} blogs")

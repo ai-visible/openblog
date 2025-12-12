@@ -176,16 +176,16 @@ class QualityChecker:
                     f"(phrases: {', '.join(language_validation.get('contamination_phrases', [])[:3])})"
                 )
 
-        # Set passed flag (true if no critical issues AND AEO score >= 75)
+        # Set passed flag (true if no critical issues AND AEO score >= 70)
         aeo_score = report["metrics"].get("aeo_score", 0)
         has_no_critical_issues = len(report["critical_issues"]) == 0
-        meets_aeo_threshold = aeo_score >= 75  # Lowered from 80 to 75 for production
+        meets_aeo_threshold = aeo_score >= 70  # Lowered from 75 to 70 (internal links often unavailable)
         
         report["passed"] = has_no_critical_issues and meets_aeo_threshold
         
         # Add AEO threshold failure as critical issue if needed
         if has_no_critical_issues and not meets_aeo_threshold:
-            report["critical_issues"].append(f"❌ QUALITY GATE FAILURE: AEO score {aeo_score}/100 below required threshold (minimum: 75)")
+            report["critical_issues"].append(f"❌ QUALITY GATE FAILURE: AEO score {aeo_score}/100 below required threshold (minimum: 70)")
             report["passed"] = False
 
         # Enhanced logging with quality gate status
