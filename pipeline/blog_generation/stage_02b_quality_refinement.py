@@ -84,6 +84,7 @@ class QualityRefinementStage(Stage):
     # AI marker patterns
     AI_MARKERS = {
         "em_dash": "—",
+        "en_dash": "–",
         "robotic_phrases": [
             "Here's how",
             "Here's what",
@@ -92,9 +93,62 @@ class QualityRefinementStage(Stage):
             "Important considerations:",
             "That's why similarly",
             "If you want another",
-            "You'll find to"
+            "You'll find to",
+            "Here are key points:",
+            "Here are the key points:",
+            "Here are key takeaways:",
         ]
     }
+    
+    # COMPREHENSIVE QUALITY CHECKLIST
+    # These are the issues Stage 2b must detect and fix
+    QUALITY_CHECKLIST = """
+    STAGE 2b QUALITY CHECKLIST - All issues to detect and fix:
+    
+    1. DUPLICATE BULLET LISTS
+       Problem: Paragraph followed by <ul><li> that repeats the same content
+       Example: "<p>AI improves X, Y, Z.</p><ul><li>AI improves X</li><li>Y</li><li>Z</li></ul>"
+       Fix: Remove the duplicate bullet list, keep only the paragraph
+    
+    2. TRUNCATED LIST ITEMS
+       Problem: List items cut off mid-sentence without punctuation
+       Example: "<li>The best practice for 2025 is platformization - consolidating point solutions into</li>"
+       Fix: Complete the sentence or remove the truncated item
+    
+    3. MALFORMED NESTED LISTS
+       Problem: Improper HTML nesting like </p> inside <li>, or <ul> inside <li><ul>
+       Example: "<ul><li>Text</p><ul><li>Nested</li></ul></li></ul>"
+       Fix: Flatten the list structure, ensure proper HTML nesting
+    
+    4. ORPHANED INCOMPLETE PARAGRAPHS
+       Problem: Paragraphs that are just "This" or incomplete sentences
+       Example: "<p>This </p>" or "<p>. Also, the</p>"
+       Fix: Remove the orphaned paragraph or complete it
+    
+    5. MISSING SOURCES
+       Problem: Sources mentioned in text (IBM, Gartner, Forrester) not in Sources section
+       Fix: Ensure all referenced sources appear in the Sources field with proper URLs
+    
+    6. ACADEMIC CITATIONS [N] IN BODY
+       Problem: [1], [2], [1][2] markers appear directly in content
+       Fix: Convert to natural language: "according to IBM" or remove
+    
+    7. EM DASHES AND EN DASHES
+       Problem: — and – characters that look robotic
+       Fix: Replace with regular hyphens or rewrite sentence
+    
+    8. ROBOTIC SUMMARY PHRASES
+       Problem: "Here are key points:" followed by bullet list duplicating content
+       Fix: Remove the phrase and the redundant list
+    
+    9. PERIOD AT START OF PARAGRAPH/LIST
+       Problem: ". Also," or ". 3. Identity" at start of content
+       Fix: Remove the orphaned period
+    
+    10. LOWERCASE AFTER PERIOD
+        Problem: "sentence ends. new sentence" (lowercase after period)
+        Fix: Capitalize the first letter after the period
+    """
     
     async def execute(self, context: ExecutionContext) -> ExecutionContext:
         """
@@ -202,6 +256,27 @@ class QualityRefinementStage(Stage):
         academic_citation_issue = self._check_academic_citations(data)
         if academic_citation_issue:
             issues.append(academic_citation_issue)
+        
+        # Issue 5: Duplicate bullet lists (paragraph content repeated as list)
+        duplicate_list_issues = self._check_duplicate_bullet_lists(data)
+        issues.extend(duplicate_list_issues)
+        
+        # Issue 6: Truncated list items (incomplete sentences)
+        truncated_item_issues = self._check_truncated_list_items(data)
+        issues.extend(truncated_item_issues)
+        
+        # Issue 7: Malformed HTML (nested lists, improper tags)
+        malformed_html_issues = self._check_malformed_html(data)
+        issues.extend(malformed_html_issues)
+        
+        # Issue 8: Orphaned incomplete paragraphs
+        orphaned_para_issues = self._check_orphaned_paragraphs(data)
+        issues.extend(orphaned_para_issues)
+        
+        # Issue 9: Missing sources (mentioned but not in Sources)
+        missing_sources_issue = self._check_missing_sources(data)
+        if missing_sources_issue:
+            issues.append(missing_sources_issue)
         
         return issues
     
@@ -386,6 +461,246 @@ class QualityRefinementStage(Stage):
         
         return None
     
+    def _check_duplicate_bullet_lists(self, data: ArticleOutput) -> List[QualityIssue]:
+        """
+        Check for paragraphs immediately followed by bullet lists that duplicate content.
+        
+        Pattern: <p>AI improves X, Y, Z.</p><ul><li>AI improves X</li>...
+        """
+        issues = []
+        
+        content_fields = ["Intro"] + [f"section_{i:02d}_content" for i in range(1, 10)]
+        
+        for field in content_fields:
+            content = str(getattr(data, field, ""))
+            if not content:
+                continue
+            
+            # Find pattern: <p>text</p> followed by <ul><li> with overlapping content
+            pattern = r'<p>([^<]{20,})</p>\s*<ul>\s*<li>([^<]+)</li>'
+            matches = re.findall(pattern, content, re.DOTALL)
+            
+            for p_text, li_text in matches:
+                # Check if list item is a substring of the paragraph
+                p_words = set(p_text.lower().split()[:10])
+                li_words = set(li_text.lower().split()[:10])
+                
+                # If >60% word overlap, it's likely duplicate
+                if len(p_words & li_words) > 0.6 * len(li_words):
+                    issues.append(QualityIssue(
+                        issue_type="duplicate_bullet_list",
+                        severity="critical",
+                        description=f"Paragraph content duplicated as bullet list in {field}",
+                        current_value=li_text[:50] + "...",
+                        target_value="Remove duplicate list",
+                        field=field
+                    ))
+        
+        return issues
+    
+    def _check_truncated_list_items(self, data: ArticleOutput) -> List[QualityIssue]:
+        """
+        Check for list items that are incomplete (cut off mid-sentence).
+        
+        Pattern: <li>Text without proper ending punctuation</li>
+        """
+        issues = []
+        
+        content_fields = ["Intro"] + [f"section_{i:02d}_content" for i in range(1, 10)]
+        
+        for field in content_fields:
+            content = str(getattr(data, field, ""))
+            if not content:
+                continue
+            
+            # Find all list items
+            li_pattern = r'<li>([^<]+)</li>'
+            list_items = re.findall(li_pattern, content)
+            
+            for item in list_items:
+                item = item.strip()
+                
+                # Skip items that look complete
+                if not item or len(item) < 20:
+                    continue
+                
+                # Check if item ends without punctuation (., !, ?, :)
+                if not item[-1] in '.!?:':
+                    # Check if it ends with preposition/article (likely truncated)
+                    truncation_endings = ['to', 'the', 'a', 'an', 'of', 'with', 'for', 'in', 'on', 'at', 'from', 'into', 'and', 'or']
+                    last_word = item.split()[-1].lower()
+                    
+                    if last_word in truncation_endings:
+                        issues.append(QualityIssue(
+                            issue_type="truncated_list_item",
+                            severity="critical",
+                            description=f"Truncated list item in {field}: '{item[:40]}...'",
+                            current_value=item,
+                            target_value="Complete the sentence or remove",
+                            field=field
+                        ))
+        
+        return issues
+    
+    def _check_malformed_html(self, data: ArticleOutput) -> List[QualityIssue]:
+        """
+        Check for malformed HTML structure.
+        
+        Patterns:
+        - </p> inside <li>
+        - <ul> directly inside <ul>
+        - Unclosed tags
+        """
+        issues = []
+        
+        content_fields = ["Intro"] + [f"section_{i:02d}_content" for i in range(1, 10)]
+        
+        for field in content_fields:
+            content = str(getattr(data, field, ""))
+            if not content:
+                continue
+            
+            # Check for </p> inside list items
+            if re.search(r'<li>[^<]*</p>', content):
+                issues.append(QualityIssue(
+                    issue_type="malformed_html",
+                    severity="critical",
+                    description=f"Found </p> inside <li> in {field}",
+                    current_value="</p> inside <li>",
+                    target_value="Fix HTML nesting",
+                    field=field
+                ))
+            
+            # Check for nested <ul><ul>
+            if re.search(r'<ul>\s*<ul>', content):
+                issues.append(QualityIssue(
+                    issue_type="malformed_html",
+                    severity="critical",
+                    description=f"Found nested <ul><ul> in {field}",
+                    current_value="<ul><ul>",
+                    target_value="Flatten list structure",
+                    field=field
+                ))
+            
+            # Check for <p> immediately containing <ul>
+            if re.search(r'<p>\s*<ul>', content):
+                issues.append(QualityIssue(
+                    issue_type="malformed_html",
+                    severity="warning",
+                    description=f"Found <ul> inside <p> in {field}",
+                    current_value="<p><ul>",
+                    target_value="Separate paragraph from list",
+                    field=field
+                ))
+        
+        return issues
+    
+    def _check_orphaned_paragraphs(self, data: ArticleOutput) -> List[QualityIssue]:
+        """
+        Check for orphaned incomplete paragraphs.
+        
+        Patterns:
+        - <p>This </p>
+        - <p>. Also,</p>
+        - Very short paragraphs under 3 words
+        """
+        issues = []
+        
+        content_fields = ["Intro"] + [f"section_{i:02d}_content" for i in range(1, 10)]
+        
+        for field in content_fields:
+            content = str(getattr(data, field, ""))
+            if not content:
+                continue
+            
+            # Find all paragraphs
+            para_pattern = r'<p>([^<]*)</p>'
+            paragraphs = re.findall(para_pattern, content)
+            
+            for para in paragraphs:
+                para = para.strip()
+                
+                # Check for "This " only
+                if para in ["This", "This ", "This.", "That", "That ", "These"]:
+                    issues.append(QualityIssue(
+                        issue_type="orphaned_paragraph",
+                        severity="critical",
+                        description=f"Orphaned incomplete paragraph in {field}: '{para}'",
+                        current_value=para,
+                        target_value="Remove or complete",
+                        field=field
+                    ))
+                
+                # Check for period at start
+                if para.startswith('. ') or para.startswith(', '):
+                    issues.append(QualityIssue(
+                        issue_type="orphaned_paragraph",
+                        severity="critical",
+                        description=f"Paragraph starts with period/comma in {field}: '{para[:30]}'",
+                        current_value=para[:30],
+                        target_value="Remove orphaned punctuation",
+                        field=field
+                    ))
+                
+                # Check for very short paragraphs (under 3 words)
+                word_count = len(para.split())
+                if 0 < word_count < 3 and not para.endswith('?'):
+                    issues.append(QualityIssue(
+                        issue_type="orphaned_paragraph",
+                        severity="warning",
+                        description=f"Very short paragraph in {field}: '{para}'",
+                        current_value=para,
+                        target_value="Expand or remove",
+                        field=field
+                    ))
+        
+        return issues
+    
+    def _check_missing_sources(self, data: ArticleOutput) -> Optional[QualityIssue]:
+        """
+        Check for sources mentioned in text but missing from Sources field.
+        
+        Looks for: IBM, Gartner, Forrester, McKinsey, Deloitte, PwC, Google, etc.
+        """
+        # Common authoritative sources
+        known_sources = [
+            "IBM", "Gartner", "Forrester", "McKinsey", "Deloitte", "PwC", 
+            "Google", "Microsoft", "Amazon", "Accenture", "KPMG", "EY",
+            "Palo Alto", "CrowdStrike", "Cisco", "Splunk", "GitHub"
+        ]
+        
+        # Get all content
+        content_fields = ["Intro"] + [f"section_{i:02d}_content" for i in range(1, 10)]
+        all_content = " ".join([
+            str(getattr(data, field, ""))
+            for field in content_fields
+            if getattr(data, field, None)
+        ])
+        
+        # Get Sources field
+        sources = str(getattr(data, "Sources", "")).lower()
+        
+        # Find mentioned sources not in Sources field
+        missing = []
+        for source in known_sources:
+            # Check if mentioned in content
+            if source.lower() in all_content.lower():
+                # Check if in Sources
+                if source.lower() not in sources:
+                    missing.append(source)
+        
+        if missing:
+            return QualityIssue(
+                issue_type="missing_sources",
+                severity="critical",
+                description=f"Sources mentioned but not in Sources field: {', '.join(missing)}",
+                current_value=missing,
+                target_value="Add these sources with proper URLs",
+                field="Sources"
+            )
+        
+        return None
+    
     def _issues_to_rewrites(
         self,
         issues: List[QualityIssue],
@@ -479,6 +794,108 @@ class QualityRefinementStage(Stage):
                         "academic_citations_found": issue.current_value
                     }
                 ))
+            
+            elif issue.issue_type == "duplicate_bullet_list":
+                rewrites.append(RewriteInstruction(
+                    target=issue.field,
+                    instruction="""REMOVE duplicate bullet lists that repeat paragraph content.
+                    
+PATTERN TO FIX:
+<p>AI improves detection, response, and automation.</p>
+<ul>
+<li>AI improves detection</li>
+<li>Response</li>
+<li>Automation</li>
+</ul>
+
+CORRECT OUTPUT:
+<p>AI improves detection, response, and automation.</p>
+
+RULES:
+- If a <ul> immediately follows a <p> and the list items repeat words from the paragraph, DELETE the entire <ul>
+- Keep ONLY the paragraph
+- Do NOT add any new content
+- Do NOT modify the paragraph itself""",
+                    mode=RewriteMode.QUALITY_FIX,
+                    preserve_structure=True,
+                    min_similarity=0.80,
+                    max_similarity=0.95,
+                    context={
+                        "duplicate_content": issue.current_value
+                    }
+                ))
+            
+            elif issue.issue_type == "truncated_list_item":
+                rewrites.append(RewriteInstruction(
+                    target=issue.field,
+                    instruction=f"""Fix truncated list item that ends mid-sentence.
+                    
+TRUNCATED ITEM: {issue.current_value}
+
+RULES:
+- Either COMPLETE the sentence properly with a period
+- Or REMOVE the list item entirely if it cannot be completed meaningfully
+- Ensure the list item ends with proper punctuation (. or :)
+- Do NOT leave sentences ending with: to, the, a, an, of, with, for, in, on, at, from, into, and, or""",
+                    mode=RewriteMode.QUALITY_FIX,
+                    preserve_structure=True,
+                    min_similarity=0.70,
+                    max_similarity=0.90,
+                    context={
+                        "truncated_item": issue.current_value
+                    }
+                ))
+            
+            elif issue.issue_type == "malformed_html":
+                rewrites.append(RewriteInstruction(
+                    target=issue.field,
+                    instruction="""Fix malformed HTML structure.
+
+RULES:
+- Never place </p> inside <li> tags
+- Never nest <ul> directly inside <ul> without <li>
+- Never place <ul> directly inside <p>
+- Ensure all lists are properly structured: <ul><li>item</li><li>item</li></ul>
+- Separate paragraphs from lists with proper closing tags
+
+CORRECT STRUCTURE:
+<p>Paragraph text here.</p>
+<ul>
+<li>List item one.</li>
+<li>List item two.</li>
+</ul>""",
+                    mode=RewriteMode.QUALITY_FIX,
+                    preserve_structure=True,
+                    min_similarity=0.80,
+                    max_similarity=0.95,
+                    context={
+                        "html_issue": issue.current_value
+                    }
+                ))
+            
+            elif issue.issue_type == "orphaned_paragraph":
+                rewrites.append(RewriteInstruction(
+                    target=issue.field,
+                    instruction=f"""Fix orphaned/incomplete paragraph: '{issue.current_value}'
+
+RULES:
+- If paragraph is just "This", "That", "These" - REMOVE it entirely
+- If paragraph starts with ". " or ", " - REMOVE the leading punctuation
+- If paragraph is under 3 words - EITHER expand it to a full sentence OR remove it
+- Ensure all paragraphs are complete, meaningful sentences""",
+                    mode=RewriteMode.QUALITY_FIX,
+                    preserve_structure=True,
+                    min_similarity=0.80,
+                    max_similarity=0.95,
+                    context={
+                        "orphaned_content": issue.current_value
+                    }
+                ))
+            
+            elif issue.issue_type == "missing_sources":
+                # Note: This is logged but not auto-fixed (too complex)
+                # Layer 3 (html_renderer) will handle missing source validation
+                logger.info(f"⚠️  Missing sources detected: {', '.join(issue.current_value)} - will be caught in Layer 3")
         
         return rewrites
     

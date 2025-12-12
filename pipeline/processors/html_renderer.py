@@ -544,6 +544,25 @@ class HTMLRenderer:
             if title and title.strip():
                 # Strip any <p> tags from title before escaping
                 title_clean = HTMLRenderer._strip_html(title)
+                
+                # FIX: Remove double-prefixed question words in titles
+                # "What is Why is X" → "Why is X"
+                # "What is What Role Does X Play" → "What Role Does X Play"
+                double_prefix_patterns = [
+                    (r'^What is Why is\b', 'Why is'),
+                    (r'^What is How does\b', 'How does'),
+                    (r'^What is What Role\b', 'What Role'),
+                    (r'^What is What are\b', 'What are'),
+                    (r'^What is What is\b', 'What is'),
+                    (r'^How does How does\b', 'How does'),
+                    (r'^Why is Why is\b', 'Why is'),
+                ]
+                for pattern, replacement in double_prefix_patterns:
+                    title_clean = re.sub(pattern, replacement, title_clean, flags=re.IGNORECASE)
+                
+                # Also fix double question marks
+                title_clean = re.sub(r'\?\?+', '?', title_clean)
+                
                 # Add id for TOC anchor linking (toc_01, toc_02, etc.)
                 parts.append(f'<h2 id="toc_{i:02d}">{HTMLRenderer._escape_html(title_clean)}</h2>')
 
@@ -1360,6 +1379,7 @@ class HTMLRenderer:
         # STEP 0.2b: FIX DOUBLE-PREFIXED TITLES (from broken question conversion)
         # "What is What is AI" → "What is AI"
         # "How does How does AI work" → "How does AI work"
+        # "What is Why is X" → "Why is X" (cross-prefix mismatch)
         double_prefix_patterns = [
             (r'What is What is\b', 'What is'),
             (r'What are What are\b', 'What are'),
@@ -1368,9 +1388,21 @@ class HTMLRenderer:
             (r'Why is Why is\b', 'Why is'),
             (r'When should When should\b', 'When should'),
             (r'Where can Where can\b', 'Where can'),
+            # Cross-prefix mismatches (e.g., "What is Why is X?" → "Why is X?")
+            (r'What is Why is\b', 'Why is'),
+            (r'What is How does\b', 'How does'),
+            (r'What is What Role\b', 'What Role'),
+            (r'What is What are\b', 'What are'),
+            (r'How does What is\b', 'What is'),
+            # Generic pattern: "What is " + another question word
+            (r'What is (?=How|Why|When|Where|Which|Can|Will|Should)', ''),
         ]
         for pattern, replacement in double_prefix_patterns:
             content = re.sub(pattern, replacement, content, flags=re.IGNORECASE)
+        
+        # Also fix double question marks
+        content = re.sub(r'\?\?+', '?', content)
+        
         logger.info("🔧 Fixed any double-prefixed question titles")
         
         # STEP 0.3: FIX MALFORMED PUNCTUATION PATTERNS
@@ -1391,7 +1423,49 @@ class HTMLRenderer:
         content = re.sub(r'<p>\s*<(ul|ol)>', r'<\1>', content)
         # Fix: </ul></p><p></p> → </ul>
         content = re.sub(r'</(ul|ol)>\s*</p>\s*<p>\s*</p>', r'</\1>', content)
-        logger.info("🔧 Fixed malformed HTML nesting (<ul> inside <p>)")
+        
+        # CRITICAL FIX: Remove </p> inside <li> tags (very malformed)
+        # Pattern: <li>text</p><p>more text</li> → <li>text. More text</li>
+        content = re.sub(r'(<li>[^<]*)</p>\s*<p>([^<]*</li>)', r'\1. \2', content)
+        # Pattern: <li>text</p><ul> → close the li properly
+        content = re.sub(r'(<li>[^<]*)</p>\s*<(ul|ol)>', r'\1</li><\2>', content)
+        # Pattern: </ul></li></ul> → </ul> (nested closing)
+        content = re.sub(r'</ul>\s*</li>\s*</ul>', '</ul>', content)
+        content = re.sub(r'</ol>\s*</li>\s*</ol>', '</ol>', content)
+        
+        # FIX: <li>text that wraps without closing → close it
+        # Pattern: <ul><li>text</p>More text</li></ul> → proper structure
+        content = re.sub(r'<li>([^<]+)</p>([^<]+)</li>', r'<li>\1. \2</li>', content)
+        
+        # CRITICAL FIX: Gemini breaks sentences with </p><ul><li>
+        # Pattern: "...the Big Four" </p><ul><li>Russia, China - have intensified..."
+        # This is a sentence broken in the middle - merge it back
+        # Match: </p><ul><li>TEXT - TEXT more text</li></ul>
+        def fix_mid_sentence_list(html: str) -> str:
+            """
+            Fix patterns where Gemini breaks a sentence by inserting a list.
+            
+            Pattern: "text X </p><ul><li>Y, Z - continued sentence</li></ul>"
+            Should become: "text X - Y, Z - continued sentence"
+            """
+            # This pattern catches: </p><ul><li>list items - continued</li></ul> or </p></li></ul>
+            # where the list item continues a sentence (has " - " mid-item)
+            pattern = r'</p>\s*<ul>\s*<li>([^<]*\s+-\s+[^<]*)</li>\s*</ul>'
+            
+            def merge_sentence(match):
+                list_content = match.group(1).strip()
+                # The list item IS part of the sentence - merge it
+                return f' - {list_content}'
+            
+            return re.sub(pattern, merge_sentence, html)
+        
+        content = fix_mid_sentence_list(content)
+        
+        # Also fix: </p><ul><li>text</p><p>more nested mess
+        # This is deeply malformed - try to salvage
+        content = re.sub(r'</p>\s*<ul>\s*<li>([^<]+)</p>\s*<p>', r' - \1 ', content)
+        
+        logger.info("🔧 Fixed malformed HTML nesting (<ul> inside <p>, </p> inside <li>)")
         
         # STEP 0.4: REMOVE DUPLICATE CONTENT BLOCKS
         # Gemini sometimes outputs the same paragraph/list item twice
