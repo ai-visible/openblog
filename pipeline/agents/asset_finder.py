@@ -87,6 +87,19 @@ class AssetFinderAgent:
         except Exception as e:
             logger.warning(f"Imagen client initialization failed: {e}")
             self.imagen_client = None
+        
+        # Initialize DataForSEO Google Images finder (fallback/enhancement)
+        self.dataforseo_finder = None
+        try:
+            from .google_images_finder import GoogleImagesFinder
+            self.dataforseo_finder = GoogleImagesFinder()
+            if self.dataforseo_finder.is_configured():
+                logger.info("✅ DataForSEO Google Images finder initialized (fallback available)")
+            else:
+                logger.info("⚠️  DataForSEO not configured - using Gemini only")
+        except Exception as e:
+            logger.debug(f"DataForSEO finder not available: {e}")
+            self.dataforseo_finder = None
     
     async def find_assets(self, request: AssetFinderRequest) -> AssetFinderResponse:
         """
@@ -131,6 +144,23 @@ class AssetFinderAgent:
             
             # Step 2: Use Gemini with Google Search to find assets
             assets = await self._search_for_assets(search_query, request)
+            
+            # Fallback to DataForSEO if Gemini returns no results
+            if not assets and self.dataforseo_finder and self.dataforseo_finder.is_configured():
+                print("\n⚠️  Gemini returned no results, trying DataForSEO Google Images API...")
+                try:
+                    clean_query = search_query.replace("images:", "").strip()
+                    images = await self.dataforseo_finder.search_images(
+                        query=clean_query,
+                        max_results=request.max_results,
+                        size="large",
+                        license="creativeCommons"
+                    )
+                    if images:
+                        print(f"✅ Found {len(images)} images via DataForSEO fallback")
+                        assets = self.dataforseo_finder.convert_to_found_assets(images, request.article_topic)
+                except Exception as e:
+                    logger.warning(f"DataForSEO fallback failed: {e}")
             
             if not assets:
                 logger.warning("No assets found")
@@ -180,21 +210,29 @@ class AssetFinderAgent:
         """
         Build search query for finding assets.
         
+        Uses "images:" prefix to search Google Images directly (better than page scraping).
+        
         Args:
             request: Asset finder request
             
         Returns:
-            Search query string
+            Search query string optimized for Google Images search
         """
-        # Build query from topic and context
-        query_parts = [request.article_topic]
+        # Use "images:" prefix for Google Images search (more relevant than page scraping)
+        query_parts = ["images:"]
+        
+        # Add main topic
+        query_parts.append(request.article_topic)
         
         if request.section_title:
             query_parts.append(request.section_title)
         
         # Add image type hints
         image_types_str = " ".join(request.image_types)
-        query_parts.append(f"{image_types_str} free stock images")
+        query_parts.append(image_types_str)
+        
+        # Add free stock image sites (Google Images will prioritize these)
+        query_parts.append("unsplash pexels pixabay free")
         
         # Add context about use case
         if request.company_data:
@@ -217,6 +255,8 @@ class AssetFinderAgent:
         - Searches web and extracts URLs from search results
         - Returns structured JSON with asset metadata
         
+        Falls back to DataForSEO Google Images API if Gemini fails or returns no results.
+        
         Args:
             search_query: Search query
             request: Original request for context
@@ -224,26 +264,33 @@ class AssetFinderAgent:
         Returns:
             List of found assets
         """
+        # Primary: Use Gemini + Google Search
         print(f"📡 Calling Gemini API with Google Search enabled...")
         print(f"   Model: {self.gemini_client.MODEL}")
         print(f"   Tools: Google Search (automatic web search)")
         print()
         
-        # Create prompt for Gemini to find assets
+        # Create prompt for Gemini to find assets using Google Images search
         prompt = f"""You are helping find visual assets (images, graphics, illustrations) for a blog article.
 
 Article Topic: {request.article_topic}
 {"Headline: " + request.article_headline if request.article_headline else ""}
 {"Section: " + request.section_title if request.section_title else ""}
 
-TASK: Use Google Search to find {request.max_results} high-quality visual assets that would be suitable for this blog article.
+TASK: Use Google Images Search to find {request.max_results} high-quality, relevant visual assets.
 
-REQUIREMENTS:
-1. Search for free-to-use images (Unsplash, Pexels, Pixabay, or similar free stock photo sites)
-2. Prefer professional, high-quality images
-3. Images should be relevant to: {request.article_topic}
-4. Include different types: {', '.join(request.image_types)}
-5. Verify URLs are accessible and images exist
+IMPORTANT: Search Google Images directly (not regular web pages). Focus on images that are:
+- Relevant to the article topic: {request.article_topic}
+- High quality and professional
+- From free stock photo sites (Unsplash, Pexels, Pixabay preferred)
+- Appropriate types: {', '.join(request.image_types)}
+- Large size (suitable for blog headers, at least 800px wide)
+
+AVOID:
+- Logos and brand images
+- Small icons or decorative elements
+- Low-quality or irrelevant images
+- Images from random websites (prefer stock photo sites)
 
 For each asset found, return JSON in this format:
 {{

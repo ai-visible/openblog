@@ -712,25 +712,36 @@ Be surgical - add 1-2 citations and 1-2 conversational phrases naturally.
             except Exception as e:
                 logger.debug(f"   ⚠️ {field}: AEO optimization failed - {e}")
         
-        # Optimize Direct Answer if needed
+        # Optimize Direct Answer if needed (CRITICAL - worth 25 points!)
         if direct_answer and (direct_answer_words < 30 or direct_answer_words > 70 or not has_citation_in_da):
             try:
+                primary_keyword = context.job_config.get("primary_keyword", "") if context.job_config else ""
                 da_prompt = f"""{aeo_prompt}
 
 DIRECT ANSWER TO OPTIMIZE:
 {direct_answer}
 
-Return optimized Direct Answer (40-60 words, includes keyword, includes citation).
+CRITICAL: Direct Answer is worth 25 AEO points. It MUST:
+1. Be 40-60 words (currently {direct_answer_words} words)
+2. Include primary keyword: "{primary_keyword}"
+3. Include natural language citation: "According to [Source]..." or "[Source] reports..."
+
+Return optimized Direct Answer meeting ALL requirements above.
 """
                 response = await gemini_client.generate_content(
                     prompt=da_prompt,
                     response_schema=None
                 )
                 
-                if response and 30 <= len(response.split()) <= 70:
-                    article_dict['Direct_Answer'] = response.strip()
-                    optimized_count += 1
-                    logger.info("   ✅ Optimized Direct_Answer")
+                if response:
+                    optimized_da = response.strip()
+                    optimized_da_words = len(optimized_da.split())
+                    if 30 <= optimized_da_words <= 80:  # Allow slight overflow
+                        article_dict['Direct_Answer'] = optimized_da
+                        optimized_count += 1
+                        logger.info(f"   ✅ Optimized Direct_Answer ({direct_answer_words} → {optimized_da_words} words, added citation)")
+                    else:
+                        logger.debug(f"   ⚠️ Direct_Answer: Optimized version has {optimized_da_words} words (target: 40-60)")
             except Exception as e:
                 logger.debug(f"   ⚠️ Direct_Answer: AEO optimization failed - {e}")
         
