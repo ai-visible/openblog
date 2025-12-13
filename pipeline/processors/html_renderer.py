@@ -603,6 +603,8 @@ class HTMLRenderer:
                 # STEP 5: Add internal links BELOW section (1Komma5 style)
                 # Links are placed in a "Related" block after each section, not embedded in text
                 section_internal_links = article.get("_section_internal_links", {})
+                if section_internal_links and i == 1:
+                    logger.debug(f"📎 _section_internal_links available: {list(section_internal_links.keys())}")
                 section_links = section_internal_links.get(i, [])
                 if section_links:
                     links_html = ' • '.join([

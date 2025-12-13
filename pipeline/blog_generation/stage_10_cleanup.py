@@ -565,9 +565,19 @@ class CleanupStage(Stage):
             Flattened article
         """
         flattened = {}
+        
+        # Keys that should NOT be flattened (preserved as nested dicts)
+        preserve_as_is = {
+            '_section_internal_links',  # Section-specific internal links (1Komma5 style)
+            '_citation_map',  # Citation number → URL mapping
+            '_source_name_map',  # Source name → URL mapping
+        }
 
         for key, value in article.items():
-            if isinstance(value, dict):
+            if key in preserve_as_is:
+                # Keep as-is (don't flatten)
+                flattened[key] = value
+            elif isinstance(value, dict):
                 # Flatten nested dicts with prefix
                 for nested_key, nested_value in value.items():
                     flattened[f"{key}_{nested_key}"] = nested_value
