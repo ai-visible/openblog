@@ -62,7 +62,13 @@ class QualityIssue:
 
 class QualityRefinementStage(Stage):
     """
-    Stage 2b: Quality Refinement (conditional).
+    Stage 2b: Quality Refinement (conditional sub-stage).
+    
+    NOTE: This stage has stage_num = 2 (same as Stage 2) but is NOT registered
+    in the stage registry. It's executed conditionally via _execute_stage_2b_conditional()
+    AFTER Stage 3 (Extraction) completes.
+    
+    This is a "sub-stage" that runs conditionally, not part of the main sequential flow.
     
     Detects and fixes quality issues in Gemini output:
     - Keyword over/under-optimization
@@ -72,7 +78,7 @@ class QualityRefinementStage(Stage):
     Uses RewriteEngine for surgical edits.
     """
     
-    stage_num = 2  # Runs between Stage 2 and 3
+    stage_num = 2  # Same as Stage 2, but executed conditionally (not registered)
     stage_name = "Quality Refinement"
     
     # Quality thresholds

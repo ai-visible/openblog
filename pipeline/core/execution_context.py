@@ -1,7 +1,7 @@
 """
 ExecutionContext - Shared data model for all workflow stages.
 
-This is the data structure passed between all 12 stages.
+This is the data structure passed between all 13 stages (0-12) plus conditional Stage 2b.
 Each stage receives it, modifies it, and passes to the next stage.
 
 Clean design: no side effects, immutable chain of transformations.
@@ -20,7 +20,7 @@ class ExecutionContext:
     """
     Central data model for Python Blog Writing System.
 
-    Flows through all 12 stages in sequence:
+    Flows through all 13 stages (0-12) plus conditional Stage 2b in sequence:
     Preliminary → fetches and labels: sitemap_pages
     Stage 0 → populates: job_id, job_config, company_data, language
     Stage 1 → adds: prompt

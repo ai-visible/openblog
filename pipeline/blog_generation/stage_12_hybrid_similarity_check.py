@@ -35,7 +35,7 @@ Usage in batch generation with regeneration:
   for article_config in batch:
       max_attempts = 3
       for attempt in range(max_attempts):
-          # Generate article (Stages 0-11)
+          # Generate article (Stages 0-12)
           context = await generate_article(article_config, attempt=attempt)
           
           # Check similarity with regeneration
@@ -74,13 +74,18 @@ class RegenerationResult:
 
 class HybridSimilarityCheckStage(Stage):
     """
-    Stage 12: Hybrid similarity check with automatic regeneration.
+    Stage 13: Hybrid similarity check with automatic regeneration.
+    
+    NOTE: This stage is NOT part of the main pipeline workflow.
+    It's used separately in regeneration_engine.py for batch regeneration workflows.
+    
+    Main pipeline uses Stage 12 (ReviewIterationStage) instead.
     
     Combines character-level and semantic similarity analysis to detect
     content cannibalization and trigger regeneration when needed.
     """
 
-    stage_num = 12
+    stage_num = 13  # Changed from 12 to avoid conflict with ReviewIterationStage
     stage_name = "Hybrid Content Similarity Check"
 
     def __init__(self, similarity_checker: Optional[HybridSimilarityChecker] = None):

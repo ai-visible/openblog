@@ -126,6 +126,8 @@ class ProductionStageFactory(IStageFactory):
         registry = {}
         
         # Standard pipeline stages (0-12)
+        # NOTE: Stage 2b (QualityRefinementStage) is NOT registered here.
+        # It's executed conditionally via _execute_stage_2b_conditional() after Stage 3.
         stage_classes = [
             (0, DataFetchStage),
             (1, PromptBuildStage),

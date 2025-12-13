@@ -1,5 +1,7 @@
 """
-WorkflowEngine - Orchestrates all 12 stages of the blog writing pipeline.
+WorkflowEngine - Orchestrates 13 stages (0-12) plus conditional Stage 2b of the blog writing pipeline.
+
+Total stages: 13 numbered stages (0-12) + 1 conditional stage (2b) = 14 stages total
 
 Clean separation of concerns:
 - Initialization: Load all stages
@@ -35,7 +37,7 @@ class Stage(ABC):
     """
 
     stage_num: int
-    """Stage number (0-11)"""
+    """Stage number (0-12, with conditional Stage 2b)"""
 
     stage_name: str
     """Human-readable stage name"""
@@ -400,8 +402,9 @@ class WorkflowEngine:
             else:
                 self.logger.info(f"✅ Stage 12 skipped (no review_prompts)")
         
-        # Stage 11 can start immediately after validated_article is ready
-        # (quality_report is already computed in Stage 10, revisions from Stage 12 applied)
+        # Stage 11: Storage (runs AFTER Stage 12 completes)
+        # Stage 12 modifies validated_article, so Stage 11 must wait for it
+        # No overlap optimization here - Stage 12 must complete first
         stage_11 = self.stages.get(11)
         if not stage_11:
             self.logger.warning("Stage 11 not registered")
