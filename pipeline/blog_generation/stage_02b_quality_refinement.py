@@ -230,22 +230,33 @@ class QualityRefinementStage(Stage):
             
             original = content
             
+            # 0. Strip <p> tags from titles (CRITICAL FIX)
+            if field.endswith('_title'):
+                content = re.sub(r'</?p>', '', content)
+                content = content.strip()
+            
             # 1. Em/en dashes → hyphens
             content = content.replace("—", " - ")
             content = content.replace("–", "-")
             
-            # 2. Remove academic citations [N]
-            content = re.sub(r'\[(\d+)\]', '', content)
+            # 2. Remove academic citations [N] and [N][M] patterns
+            content = re.sub(r'\[\d+\]', '', content)  # [2], [3], etc.
+            content = re.sub(r'\[\d+\]\[\d+\]', '', content)  # [2][3]
             
-            # 3. Remove "Here are key points:" + duplicate lists
+            # 3. Remove "Here are key points:" + duplicate lists (ENHANCED)
             summary_patterns = [
                 r'<p>Here are key points:</p>\s*<ul>.*?</ul>',
                 r'<p>Key benefits include:</p>\s*<ul>.*?</ul>',
                 r'<p>Important considerations:</p>\s*<ul>.*?</ul>',
                 r"<p>Here's what matters:</p>\s*<ul>.*?</ul>",
+                r'<p>Here are key points:</p>\s*<ul>.*?</ul>',  # Duplicate check
+                r'<p>Key benefits include:</p>\s*<ul>.*?</ul>',  # Duplicate check
             ]
             for pattern in summary_patterns:
                 content = re.sub(pattern, '', content, flags=re.DOTALL)
+            
+            # 3a. Remove orphaned summary list intros without lists
+            content = re.sub(r'<p>(Here are key points|Key benefits include|Important considerations|Here\'s what matters):</p>\s*', '', content, flags=re.IGNORECASE)
             
             # 4. Fix ". Also,," → ". Also,"
             content = re.sub(r'\.\s*Also,+', '. Also,', content)
@@ -293,6 +304,21 @@ class QualityRefinementStage(Stage):
             
             # 11. Fix </p><ul><li> pattern (orphaned list after paragraph)
             content = re.sub(r'</p>\s*<ul>\s*<li>([^<]{1,80})</li>\s*</ul>', '</p>', content)
+            
+            # 12. Fix broken grammar: "You can to" → "To"
+            content = re.sub(r'\bYou can to\b', 'To', content, flags=re.IGNORECASE)
+            content = re.sub(r'\byou can to\b', 'to', content)
+            
+            # 13. Fix broken sentences: "those that integrate AI deeply - expect" → complete sentence
+            # This is harder to fix automatically, but we can catch obvious fragments
+            content = re.sub(r'those that integrate AI deeply\s*-\s*expect', 'organizations that integrate AI deeply expect', content, flags=re.IGNORECASE)
+            
+            # 14. Fix incomplete sentences starting with "When a deviation occurs" without proper continuation
+            # This needs Gemini to fix, but we can flag it
+            
+            # 15. Remove trailing academic citations from paragraphs: "sentence. [2]"
+            content = re.sub(r'\.\s*\[\d+\]\s*$', '.', content, flags=re.MULTILINE)
+            content = re.sub(r'\.\s*\[\d+\]\[\d+\]\s*$', '.', content, flags=re.MULTILINE)
             
             if content != original:
                 article_dict[field] = content
@@ -370,11 +396,20 @@ Be SURGICAL - only change what's broken, preserve everything else.
 □ Links with wrong text (domain name instead of title)
 □ External links splitting sentences
 
+=== CRITICAL ISSUES TO FIX ===
+□ Section titles with <p> tags: "What is <p>Conclusion</p>?" → "Conclusion"
+□ Broken grammar: "You can to mitigate" → "To mitigate" or "You can mitigate"
+□ Incomplete sentences: "When a deviation occurs" without proper continuation
+□ Duplicate summary lists: Paragraph followed by "Here are key points:" + redundant bullets
+□ Academic citations [N] in body: Remove all [2], [3], [2][3] markers
+□ Trailing citations: "sentence. [2]" → "sentence."
+□ Sentence fragments: "those that integrate AI deeply - expect" → complete sentence
+
 === YOUR TASK ===
 1. Read the content carefully
 2. Find ALL issues matching the checklist above
 3. ALSO find any OTHER issues you notice (typos, grammar, awkward phrasing)
-4. Fix each issue surgically
+4. Fix each issue surgically - complete broken sentences, remove duplicates, fix grammar
 5. Return the complete fixed content
 
 Be thorough. Production quality means ZERO defects.

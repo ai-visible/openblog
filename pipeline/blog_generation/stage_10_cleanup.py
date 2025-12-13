@@ -102,6 +102,11 @@ class CleanupStage(Stage):
         # Step 4: Merge parallel results
         logger.debug("Step 32: Merging parallel results...")
         merged_article = self._merge_parallel_results(normalized_article, context.parallel_results)
+        
+        # Step 4a.0: Resolve proxy URLs in Sources field
+        logger.debug("Step 32a.0: Resolving proxy URLs in Sources field...")
+        if "Sources" in merged_article:
+            merged_article = self._resolve_sources_proxy_urls(merged_article)
 
         # Step 4a: Enforce AEO requirements (post-processing corrections)
         # Pass language for language-aware phrase injection
@@ -597,6 +602,55 @@ class CleanupStage(Stage):
                 flattened[key] = value
 
         return flattened
+
+    def _resolve_sources_proxy_urls(self, article: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Resolve proxy URLs in Sources field to real URLs (synchronous version).
+        
+        Gemini writes proxy URLs like:
+        https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQ...
+        
+        We follow 302 redirects to get the real URLs.
+        
+        Args:
+            article: Article dict with Sources field
+            
+        Returns:
+            Article with resolved URLs in Sources field
+        """
+        sources = article.get("Sources", "")
+        if not sources or "vertexaisearch.cloud.google.com" not in sources:
+            return article
+        
+        import httpx
+        
+        lines = sources.split('\n')
+        resolved_lines = []
+        resolved_count = 0
+        
+        for line in lines:
+            match = re.search(r'(https://vertexaisearch\.cloud\.google\.com/[^\s]+)', line)
+            if match:
+                proxy_url = match.group(1)
+                try:
+                    with httpx.Client(timeout=5.0, follow_redirects=True) as client:
+                        response = client.head(proxy_url)
+                        if response.status_code == 200:
+                            real_url = str(response.url)
+                            resolved_line = line.replace(proxy_url, real_url)
+                            resolved_lines.append(resolved_line)
+                            resolved_count += 1
+                            logger.debug(f"   📎 Resolved Sources proxy: {proxy_url[:50]}... → {real_url[:50]}...")
+                            continue
+                except Exception as e:
+                    logger.debug(f"   ⚠️ Failed to resolve Sources proxy URL: {e}")
+            resolved_lines.append(line)
+        
+        if resolved_count > 0:
+            article["Sources"] = '\n'.join(resolved_lines)
+            logger.info(f"✅ Resolved {resolved_count} proxy URLs in Sources field")
+        
+        return article
 
     def _enforce_aeo_requirements(
         self, article: Dict[str, Any], job_config: Dict[str, Any], language: str = "en"
