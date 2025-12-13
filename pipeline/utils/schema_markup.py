@@ -431,13 +431,81 @@ def _strip_html(text: str) -> str:
 
 
 def _get_all_section_content(output: ArticleOutput) -> str:
-    """Get all section content as a single string."""
+    """Get all section content as a single string, cleaned of HTML and fragments."""
+    import re
+    
     sections = [
         output.section_01_content, output.section_02_content, output.section_03_content,
         output.section_04_content, output.section_05_content, output.section_06_content,
         output.section_07_content, output.section_08_content, output.section_09_content,
     ]
-    return " ".join(s for s in sections if s)
+    
+    # Join sections
+    raw_content = " ".join(s for s in sections if s)
+    
+    # CRITICAL FIX 1: Remove "Here are key points:" + <ul>...</ul> patterns BEFORE stripping HTML
+    # These are Gemini hallucinations that create duplicate summary lists
+    raw_content = re.sub(
+        r'<p>\s*(?:Here are key points|Key points|Here are the key points|Important considerations|Key benefits include)[^<]*</p>\s*<ul>.*?</ul>',
+        '',
+        raw_content,
+        flags=re.IGNORECASE | re.DOTALL
+    )
+    
+    # CRITICAL FIX 2: Remove orphaned list items that are just fragments
+    # Pattern: <li> followed by text that doesn't end with punctuation and is under 80 chars
+    raw_content = re.sub(r'<li>[^<]{1,80}(?<![.!?])</li>', '', raw_content)
+    
+    # Strip HTML tags
+    content = _strip_html(raw_content)
+    
+    # CRITICAL FIX 3: Remove orphaned fragments (text sequences not ending with punctuation)
+    # Split by periods and filter out fragments
+    def remove_orphaned_fragments(text: str) -> str:
+        """Remove text fragments that don't form complete sentences."""
+        # Match patterns like "word word word word" (4+ words without punctuation at end)
+        # that appear between sentences
+        # This catches: "...sentence. Fragment without end Another fragment The real sentence."
+        
+        # Split on sentence-ending punctuation followed by capital letter
+        parts = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text)
+        cleaned = []
+        
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            
+            # Check if this part ends with proper punctuation
+            if part[-1:] in '.!?':
+                # It's a complete sentence - check for embedded fragments
+                # Pattern: sentence + fragment + fragment + sentence
+                # Remove mid-sentence fragments (3+ words without punctuation, followed by capital)
+                cleaned_part = re.sub(
+                    r'(?<=[.!?])\s*([A-Z][^.!?]{10,60})(?=[A-Z])',
+                    ' ',
+                    part
+                )
+                cleaned.append(cleaned_part)
+            elif len(part) > 100:
+                # Long fragment - might be a complex sentence, keep it
+                cleaned.append(part + '.')
+            # Skip short fragments without punctuation
+        
+        return ' '.join(cleaned)
+    
+    content = remove_orphaned_fragments(content)
+    
+    # Remove duplicate sentence fragments (same starting words appearing multiple times)
+    # This catches patterns like: "You might be wondering...You might be wondering why..."
+    content = re.sub(r'(\b\w{3,}\s+\w{3,}\s+\w{3,}\s+\w{3,})\s+\1', r'\1', content)
+    
+    # Clean up double spaces and fix spacing issues
+    content = re.sub(r'\s+', ' ', content)
+    content = re.sub(r'\s+\.', '.', content)  # Remove space before period
+    content = re.sub(r'\.{2,}', '.', content)  # Remove multiple periods
+    
+    return content.strip()
 
 
 def _parse_citations_from_validated_list(validated_citations) -> List[Dict]:
