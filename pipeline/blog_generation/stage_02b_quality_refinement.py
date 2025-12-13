@@ -242,6 +242,8 @@ class QualityRefinementStage(Stage):
             # 2. Remove academic citations [N] and [N][M] patterns
             content = re.sub(r'\[\d+\]', '', content)  # [2], [3], etc.
             content = re.sub(r'\[\d+\]\[\d+\]', '', content)  # [2][3]
+            # Clean up double spaces left by citation removal
+            content = re.sub(r'\s+', ' ', content)
             
             # 3. Remove "Here are key points:" + duplicate lists (ENHANCED)
             summary_patterns = [
@@ -305,9 +307,15 @@ class QualityRefinementStage(Stage):
             # 11. Fix </p><ul><li> pattern (orphaned list after paragraph)
             content = re.sub(r'</p>\s*<ul>\s*<li>([^<]{1,80})</li>\s*</ul>', '</p>', content)
             
-            # 12. Fix broken grammar: "You can to" → "To"
-            content = re.sub(r'\bYou can to\b', 'To', content, flags=re.IGNORECASE)
-            content = re.sub(r'\byou can to\b', 'to', content)
+            # 12. Fix broken grammar: "You can to" → "To", "you can to" → "to"
+            # Use lambda to preserve case
+            def fix_you_can_to(match):
+                text = match.group(0)
+                if text[0].isupper():
+                    return 'To'
+                else:
+                    return 'to'
+            content = re.sub(r'\b[yY]ou can to\b', fix_you_can_to, content)
             
             # 13. Fix broken sentences: "those that integrate AI deeply - expect" → complete sentence
             # This is harder to fix automatically, but we can catch obvious fragments
