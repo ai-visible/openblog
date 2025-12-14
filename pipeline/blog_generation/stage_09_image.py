@@ -143,94 +143,115 @@ class ImageStage(Stage):
         logger.info(f"  Bottom: {bottom_title[:50]}...")
 
         if use_graphics:
-            # Graphics generation mode
-            # Generate graphic 1: Hero
+            # Graphics generation mode - PARALLELIZED
             from pipeline.prompts.graphics_prompt import generate_graphics_config_async
-            hero_config = await generate_graphics_config_async(
-                headline=headline,
-                company_data=context.company_data,
-                job_config=context.job_config,
-            )
-            hero_url = await self._generate_graphic_with_retry(hero_config, context)
-            hero_alt = self._generate_alt_text(headline)
+            import asyncio
             
-            # Ensure hero_url is a string (handle case where fallback returns dict)
-            hero_url = hero_url if isinstance(hero_url, str) else (hero_url.get("image_url", "") if isinstance(hero_url, dict) else "")
-            context.parallel_results["image_url"] = hero_url or ""
+            # Generate all configs in parallel
+            async def generate_graphic_with_alt(title: str, position: str):
+                """Generate graphic config, then graphic, then return URL and alt text."""
+                config = await generate_graphics_config_async(
+                    headline=title,
+                    company_data=context.company_data,
+                    job_config=context.job_config,
+                )
+                url = await self._generate_graphic_with_retry(config, context)
+                alt = self._generate_alt_text(title)
+                
+                # Ensure url is a string
+                url = url if isinstance(url, str) else (url.get("image_url", "") if isinstance(url, dict) else "")
+                return url or "", alt
+            
+            # Generate all 3 graphics in parallel
+            logger.info("   🔄 Generating 3 graphics in parallel...")
+            hero_result, mid_result, bottom_result = await asyncio.gather(
+                generate_graphic_with_alt(headline, "hero"),
+                generate_graphic_with_alt(mid_title, "mid"),
+                generate_graphic_with_alt(bottom_title, "bottom"),
+                return_exceptions=True
+            )
+            
+            # Process results
+            hero_url, hero_alt = hero_result if not isinstance(hero_result, Exception) else ("", self._generate_alt_text(headline))
+            if isinstance(hero_result, Exception):
+                logger.debug(f"   ⚠️ Hero graphic generation failed: {hero_result}")
+            
+            mid_url, mid_alt = mid_result if not isinstance(mid_result, Exception) else ("", self._generate_alt_text(mid_title))
+            if isinstance(mid_result, Exception):
+                logger.debug(f"   ⚠️ Mid graphic generation failed: {mid_result}")
+            
+            bottom_url, bottom_alt = bottom_result if not isinstance(bottom_result, Exception) else ("", self._generate_alt_text(bottom_title))
+            if isinstance(bottom_result, Exception):
+                logger.debug(f"   ⚠️ Bottom graphic generation failed: {bottom_result}")
+            
+            # Store results
+            context.parallel_results["image_url"] = hero_url
             context.parallel_results["image_alt_text"] = hero_alt
-
-            # Generate graphic 2: Mid-article
-            mid_config = await generate_graphics_config_async(
-                headline=mid_title,
-                company_data=context.company_data,
-                job_config=context.job_config,
-            )
-            mid_url = await self._generate_graphic_with_retry(mid_config, context)
-            mid_alt = self._generate_alt_text(mid_title)
-            
-            # Ensure mid_url is a string
-            mid_url = mid_url if isinstance(mid_url, str) else (mid_url.get("image_url", "") if isinstance(mid_url, dict) else "")
-            context.parallel_results["mid_image_url"] = mid_url or ""
+            context.parallel_results["mid_image_url"] = mid_url
             context.parallel_results["mid_image_alt"] = mid_alt
-
-            # Generate graphic 3: Bottom
-            bottom_config = await generate_graphics_config_async(
-                headline=bottom_title,
-                company_data=context.company_data,
-                job_config=context.job_config,
-            )
-            bottom_url = await self._generate_graphic_with_retry(bottom_config, context)
-            bottom_alt = self._generate_alt_text(bottom_title)
-            
-            # Ensure bottom_url is a string
-            bottom_url = bottom_url if isinstance(bottom_url, str) else (bottom_url.get("image_url", "") if isinstance(bottom_url, dict) else "")
-            context.parallel_results["bottom_image_url"] = bottom_url or ""
+            context.parallel_results["bottom_image_url"] = bottom_url
             context.parallel_results["bottom_image_alt"] = bottom_alt
 
             graphics_generated = sum([bool(hero_url), bool(mid_url), bool(bottom_url)])
             logger.info(f"✅ Generated {graphics_generated}/3 graphics successfully")
         else:
-            # Image generation mode (default)
-            # Generate image 1: Hero
+            # Image generation mode (default) - PARALLELIZED
+            import asyncio
+            
+            # Generate all prompts (synchronous, fast)
             hero_prompt = generate_image_prompt(
                 headline=headline,
                 company_data=context.company_data,
                 job_config=context.job_config,
             )
-            hero_url = await self._generate_image_with_retry(hero_prompt, context)
-            hero_alt = self._generate_alt_text(headline)
-            
-            # Ensure hero_url is a string (handle case where fallback returns dict)
-            hero_url = hero_url if isinstance(hero_url, str) else (hero_url.get("image_url", "") if isinstance(hero_url, dict) else "")
-            context.parallel_results["image_url"] = hero_url or ""
-            context.parallel_results["image_alt_text"] = hero_alt
-
-            # Generate image 2: Mid-article
             mid_prompt = generate_image_prompt(
                 headline=mid_title,
                 company_data=context.company_data,
                 job_config=context.job_config,
             )
-            mid_url = await self._generate_image_with_retry(mid_prompt, context)
-            mid_alt = self._generate_alt_text(mid_title)
-            
-            # Ensure mid_url is a string
-            mid_url = mid_url if isinstance(mid_url, str) else (mid_url.get("image_url", "") if isinstance(mid_url, dict) else "")
-            context.parallel_results["mid_image_url"] = mid_url or ""
-            context.parallel_results["mid_image_alt"] = mid_alt
-
-            # Generate image 3: Bottom
             bottom_prompt = generate_image_prompt(
                 headline=bottom_title,
                 company_data=context.company_data,
                 job_config=context.job_config,
             )
-            bottom_url = await self._generate_image_with_retry(bottom_prompt, context)
-            bottom_alt = self._generate_alt_text(bottom_title)
             
-            # Ensure bottom_url is a string
-            bottom_url = bottom_url if isinstance(bottom_url, str) else (bottom_url.get("image_url", "") if isinstance(bottom_url, dict) else "")
-            context.parallel_results["bottom_image_url"] = bottom_url or ""
+            # Generate all 3 images in parallel
+            async def generate_image_with_alt(prompt: str, title: str):
+                """Generate image and return URL and alt text."""
+                url = await self._generate_image_with_retry(prompt, context)
+                alt = self._generate_alt_text(title)
+                
+                # Ensure url is a string
+                url = url if isinstance(url, str) else (url.get("image_url", "") if isinstance(url, dict) else "")
+                return url or "", alt
+            
+            logger.info("   🔄 Generating 3 images in parallel...")
+            hero_result, mid_result, bottom_result = await asyncio.gather(
+                generate_image_with_alt(hero_prompt, headline),
+                generate_image_with_alt(mid_prompt, mid_title),
+                generate_image_with_alt(bottom_prompt, bottom_title),
+                return_exceptions=True
+            )
+            
+            # Process results
+            hero_url, hero_alt = hero_result if not isinstance(hero_result, Exception) else ("", self._generate_alt_text(headline))
+            if isinstance(hero_result, Exception):
+                logger.debug(f"   ⚠️ Hero image generation failed: {hero_result}")
+            
+            mid_url, mid_alt = mid_result if not isinstance(mid_result, Exception) else ("", self._generate_alt_text(mid_title))
+            if isinstance(mid_result, Exception):
+                logger.debug(f"   ⚠️ Mid image generation failed: {mid_result}")
+            
+            bottom_url, bottom_alt = bottom_result if not isinstance(bottom_result, Exception) else ("", self._generate_alt_text(bottom_title))
+            if isinstance(bottom_result, Exception):
+                logger.debug(f"   ⚠️ Bottom image generation failed: {bottom_result}")
+            
+            # Store results
+            context.parallel_results["image_url"] = hero_url
+            context.parallel_results["image_alt_text"] = hero_alt
+            context.parallel_results["mid_image_url"] = mid_url
+            context.parallel_results["mid_image_alt"] = mid_alt
+            context.parallel_results["bottom_image_url"] = bottom_url
             context.parallel_results["bottom_image_alt"] = bottom_alt
 
             images_generated = sum([bool(hero_url), bool(mid_url), bool(bottom_url)])

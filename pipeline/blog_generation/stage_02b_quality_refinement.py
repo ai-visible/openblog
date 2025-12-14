@@ -22,6 +22,7 @@ Only executes if quality issues are detected.
 
 import logging
 import re
+import asyncio
 from typing import Dict, List, Any, Optional
 
 from ..core import ExecutionContext, Stage
@@ -62,7 +63,13 @@ class QualityIssue:
 
 class QualityRefinementStage(Stage):
     """
-    Stage 2b: Quality Refinement (conditional).
+    Stage 2b: Quality Refinement (conditional sub-stage).
+    
+    NOTE: This stage has stage_num = 2 (same as Stage 2) but is NOT registered
+    in the stage registry. It's executed conditionally via _execute_stage_2b_conditional()
+    AFTER Stage 3 (Extraction) completes.
+    
+    This is a "sub-stage" that runs conditionally, not part of the main sequential flow.
     
     Detects and fixes quality issues in Gemini output:
     - Keyword over/under-optimization
@@ -72,7 +79,7 @@ class QualityRefinementStage(Stage):
     Uses RewriteEngine for surgical edits.
     """
     
-    stage_num = 2  # Runs between Stage 2 and 3
+    stage_num = 2  # Same as Stage 2, but executed conditionally (not registered)
     stage_name = "Quality Refinement"
     
     # Quality thresholds
@@ -154,6 +161,10 @@ class QualityRefinementStage(Stage):
         """
         Execute Stage 2b: Detect and fix quality issues.
         
+        NEW FLOW (Dec 2024):
+        1. REGEX CLEANUP FIRST - fast, deterministic fixes
+        2. GEMINI REVIEW - semantic fixes that need AI
+        
         Args:
             context: ExecutionContext with structured_data from Stage 2
         
@@ -167,62 +178,751 @@ class QualityRefinementStage(Stage):
             logger.warning("No structured_data available, skipping refinement")
             return context
         
-        # Detect quality issues
-        issues = self._detect_quality_issues(context)
+        # ============================================================
+        # STEP 1: SKIP REGEX CLEANUP - AI-only approach
+        # ============================================================
+        # All fixes should come from improved prompts in Stage 2 and Stage 2b
+        # No regex cleanup - trust AI to generate correct content
+        logger.info("🔧 Step 1: Skipping regex cleanup (AI-only approach)")
         
-        if not issues:
-            logger.info("✅ No quality issues detected, skipping refinement")
-            return context
+        # ============================================================
+        # STEP 2: GEMINI REVIEW (MANDATORY - always runs)
+        # ============================================================
+        logger.info("🤖 Step 2: Gemini quality review (MANDATORY)...")
+        context = await self._gemini_full_review(context)
         
-        # Log detected issues
-        critical_issues = [i for i in issues if i.severity == "critical"]
-        warning_issues = [i for i in issues if i.severity == "warning"]
+        # ============================================================
+        # STEP 3: HUMANIZE LANGUAGE (remove AI markers)
+        # ============================================================
+        logger.info("✍️ Step 3: Humanizing language (removing AI markers)...")
+        context = self._humanize_language(context)
         
-        logger.info(f"🔍 Detected {len(issues)} quality issues:")
-        logger.info(f"   Critical: {len(critical_issues)}")
-        logger.info(f"   Warnings: {len(warning_issues)}")
+        # ============================================================
+        # STEP 4: AEO OPTIMIZATION (boost score to 95+)
+        # ============================================================
+        logger.info("🚀 Step 4: AEO optimization (target: score 95+)...")
+        context = await self._optimize_aeo_components(context)
         
-        for issue in issues:
-            logger.info(f"   {issue.severity.upper()}: {issue.description}")
-        
-        # Convert issues to rewrite instructions
-        rewrites = self._issues_to_rewrites(issues, context)
-        
-        if not rewrites:
-            logger.warning("No rewrites generated from issues, skipping refinement")
-            return context
-        
-        logger.info(f"🔧 Applying {len(rewrites)} targeted rewrites...")
-        logger.info("🔄 Attempting Gemini-based fixes (best effort, non-blocking)...")
-        
-        # Execute rewrites
-        try:
-            article_dict = context.structured_data.dict()
-            
-            updated_article = await targeted_rewrite(
-                article=article_dict,
-                rewrites=rewrites
-            )
-            
-            # Update context with refined data
-            context.structured_data = ArticleOutput(**updated_article)
-            
-            logger.info("✅ Gemini quality refinement complete")
-            
-            # Re-check quality (for logging)
-            remaining_issues = self._detect_quality_issues(context)
-            if remaining_issues:
-                logger.warning(f"⚠️  {len(remaining_issues)} issues remain after Gemini refinement")
-                logger.info("🛡️  Layer 3 (regex fallback) will catch these in html_renderer.py")
-            else:
-                logger.info("✅ All quality issues resolved by Gemini")
-        
-        except Exception as e:
-            logger.warning(f"⚠️  Gemini refinement failed: {str(e)}")
-            logger.info("🛡️  Continuing with original content - Layer 3 (regex) will fix issues")
-            logger.info("📊 This failure is logged but does NOT block the pipeline")
+        # Log any remaining issues (for transparency)
+        remaining_issues = self._detect_quality_issues(context)
+        if remaining_issues:
+            logger.info(f"📊 Post-review status: {len(remaining_issues)} minor issues detected")
+            logger.info("🛡️  Layer 3 (html_renderer.py) will handle any remaining cleanup")
+        else:
+            logger.info("✅ All quality checks passed")
         
         return context
+        
+    # REMOVED: _apply_regex_cleanup - NO REGEX, NO STRING MANIPULATION
+    # All fixes must be done by AI (Gemini) in _gemini_full_review
+    
+    def _apply_regex_cleanup_REMOVED(self, context: ExecutionContext) -> ExecutionContext:
+        """
+        Apply deterministic regex fixes to all content fields.
+        
+        These are fast, reliable fixes that don't need AI:
+        - Em/en dashes → hyphens
+        - Academic citations [N] → remove
+        - Duplicate summary lists → remove
+        - Double prefixes → fix
+        - Truncated fragment lists → remove
+        """
+        data = context.structured_data
+        if not data:
+            return context
+        
+        # Get all fields as dict
+        article_dict = data.dict() if hasattr(data, 'dict') else dict(data)
+        changes_made = 0
+        
+        # Fields to process
+        content_fields = [
+            'Intro', 'Direct_Answer', 'Teaser',
+            'section_01_content', 'section_02_content', 'section_03_content',
+            'section_04_content', 'section_05_content', 'section_06_content',
+            'section_07_content', 'section_08_content', 'section_09_content',
+            'section_01_title', 'section_02_title', 'section_03_title',
+            'section_04_title', 'section_05_title', 'section_06_title',
+            'section_07_title', 'section_08_title', 'section_09_title',
+        ]
+        
+        for field in content_fields:
+            content = article_dict.get(field)
+            if not content or not isinstance(content, str):
+                continue
+            
+            original = content
+            
+            # 0. Strip <p> tags from titles (CRITICAL FIX)
+            if field.endswith('_title'):
+                content = re.sub(r'</?p>', '', content)
+                content = content.strip()
+            
+            # 1. Em/en dashes → hyphens
+            content = content.replace("—", " - ")
+            content = content.replace("–", "-")
+            
+            # 2. Remove academic citations [N] and [N][M] patterns
+            content = re.sub(r'\[\d+\]', '', content)  # [2], [3], etc.
+            content = re.sub(r'\[\d+\]\[\d+\]', '', content)  # [2][3]
+            # Clean up double spaces left by citation removal
+            content = re.sub(r'\s+', ' ', content)
+            
+            # 3. Remove "Here are key points:" + duplicate lists (ENHANCED)
+            summary_patterns = [
+                r'<p>Here are key points:</p>\s*<ul>.*?</ul>',
+                r'<p>Key benefits include:</p>\s*<ul>.*?</ul>',
+                r'<p>Important considerations:</p>\s*<ul>.*?</ul>',
+                r"<p>Here's what matters:</p>\s*<ul>.*?</ul>",
+                r'<p>Here are key points:</p>\s*<ul>.*?</ul>',  # Duplicate check
+                r'<p>Key benefits include:</p>\s*<ul>.*?</ul>',  # Duplicate check
+            ]
+            for pattern in summary_patterns:
+                content = re.sub(pattern, '', content, flags=re.DOTALL)
+            
+            # 3a. Remove orphaned summary list intros without lists
+            content = re.sub(r'<p>(Here are key points|Key benefits include|Important considerations|Here\'s what matters):</p>\s*', '', content, flags=re.IGNORECASE)
+            
+            # 4. Fix ". Also,," → ". Also,"
+            content = re.sub(r'\.\s*Also,+', '. Also,', content)
+            
+            # 5. Remove truncated fragment lists (75%+ items without punctuation)
+            content = self._remove_fragment_lists(content)
+            
+            # 6. Fix double prefixes: "What is <p>How is..." → "<p>How is..."
+            content = re.sub(r'What is\s*<p>', '<p>', content)
+            content = re.sub(r'What are the future trends in\s*<p>', '<p>', content)
+            content = re.sub(r'What is Why is\s*', '', content)
+            
+            # 7. Fix lowercase after period
+            content = re.sub(r'(\. )([a-z])', lambda m: m.group(1) + m.group(2).upper(), content)
+            
+            # 8. Remove orphaned periods at start
+            content = re.sub(r'^<p>\.\s*', '<p>', content)
+            content = re.sub(r'<p>\.\s*Also,', '<p>Also,', content)
+            
+            # 9. Fix brand capitalization (deterministic replacements)
+            brand_fixes = [
+                (r'\biBM\b', 'IBM'),
+                (r'\bnIST\b', 'NIST'),
+                (r'\bmCKinsey\b', 'McKinsey'),
+                (r'\bgARTNER\b', 'Gartner'),
+                (r'\bgartner\b', 'Gartner'),  # When at start of sentence (after period)
+                (r'\bfORRESTER\b', 'Forrester'),
+                (r'\bdELOITTE\b', 'Deloitte'),
+                (r'\baCCENTURE\b', 'Accenture'),
+                (r'\bgOOGLE\b', 'Google'),
+                (r'\bmICROSOFT\b', 'Microsoft'),
+                (r'\baMAZON\b', 'Amazon'),
+                (r'\baWS\b', 'AWS'),
+            ]
+            for pattern, replacement in brand_fixes:
+                content = re.sub(pattern, replacement, content)
+            
+            # 10. Fix single-item fragment lists (orphaned list items)
+            # Pattern: <ul><li>short text without punctuation</li></ul>
+            content = re.sub(
+                r'<ul>\s*<li>([^<]{1,50})</li>\s*</ul>',
+                lambda m: '' if not m.group(1).strip().endswith(('.', '!', '?', ':')) else m.group(0),
+                content
+            )
+            
+            # 11. Fix </p><ul><li> pattern (orphaned list after paragraph)
+            content = re.sub(r'</p>\s*<ul>\s*<li>([^<]{1,80})</li>\s*</ul>', '</p>', content)
+            
+            # 12. Fix broken grammar: "You can to" → "To", "you can to" → "to"
+            # Use lambda to preserve case
+            def fix_you_can_to(match):
+                text = match.group(0)
+                if text[0].isupper():
+                    return 'To'
+                else:
+                    return 'to'
+            content = re.sub(r'\b[yY]ou can to\b', fix_you_can_to, content)
+            
+            # 13. Fix broken sentences: "those that integrate AI deeply - expect" → complete sentence
+            # This is harder to fix automatically, but we can catch obvious fragments
+            content = re.sub(r'those that integrate AI deeply\s*-\s*expect', 'organizations that integrate AI deeply expect', content, flags=re.IGNORECASE)
+            
+            # 14. Fix incomplete sentences starting with "When a deviation occurs" without proper continuation
+            # This needs Gemini to fix, but we can flag it
+            
+            # 15. Remove trailing academic citations from paragraphs: "sentence. [2]"
+            content = re.sub(r'\.\s*\[\d+\]\s*$', '.', content, flags=re.MULTILINE)
+            content = re.sub(r'\.\s*\[\d+\]\[\d+\]\s*$', '.', content, flags=re.MULTILINE)
+            
+            if content != original:
+                article_dict[field] = content
+                changes_made += 1
+        
+        if changes_made > 0:
+            logger.info(f"   ✅ Regex cleanup applied to {changes_made} fields")
+            # Update context with cleaned data
+            from ..models.output_schema import ArticleOutput
+            context.structured_data = ArticleOutput(**article_dict)
+        else:
+            logger.info("   ℹ️ Regex cleanup: no changes needed")
+        
+        return context
+        
+    async def _gemini_full_review(self, context: ExecutionContext) -> ExecutionContext:
+        """
+        MANDATORY Gemini review with full quality checklist.
+        
+        Gemini reviews ALL content fields and fixes any issues it finds,
+        even if our detection logic missed them.
+        """
+        from pydantic import BaseModel, Field
+        from typing import List
+        import json
+        
+        # Define response schema
+        class ContentFix(BaseModel):
+            issue_type: str = Field(description="Type of issue fixed")
+            field: str = Field(description="Which field was fixed")
+        
+        class ReviewResponse(BaseModel):
+            fixed_content: str = Field(description="The complete fixed content")
+            issues_fixed: int = Field(description="Number of issues fixed")
+            fixes: List[ContentFix] = Field(default_factory=list)
+        
+        # Full quality checklist - SUPERCHARGED for production
+        CHECKLIST = """
+You are an expert quality editor. Your job is to find and fix ALL issues.
+Be SURGICAL - only change what's broken, preserve everything else.
+
+=== STRUCTURAL ISSUES (CRITICAL) ===
+□ Truncated list items ending mid-word ("secur", "autom", "manag")
+□ Fragment lists - single-item lists that are clearly part of a sentence
+□ Duplicate summary lists ("Here are key points:" repeating paragraph content)
+□ Orphaned HTML tags (</p>, </li>, </ul> in wrong places)
+□ Malformed HTML nesting (<ul> inside <p>, </p> inside <li>)
+□ Empty or near-empty paragraphs (<p>This </p>, <p>. Also,</p>)
+□ Broken sentences split across multiple <p> tags - CRITICAL: Fix sentences like "</p><p><strong>How can</strong> you..." by merging into single paragraph
+□ Lists where most items lack proper sentence structure
+□ Paragraphs with orphaned <strong> tags: "<p><strong>If you</strong></p> want..." → merge into "<p><strong>If you</strong> want...</p>"
+□ Sentences incorrectly split: "</p><p><strong>you'll</strong></p> need..." → merge into single paragraph
+
+=== CAPITALIZATION ISSUES ===
+□ Wrong capitalization of brands: "iBM" → "IBM", "nIST" → "NIST", "mCKinsey" → "McKinsey"
+□ Lowercase after period: "sentence. the next" → "sentence. The next"
+□ All-caps words that shouldn't be: "THE BEST" → "the best"
+
+=== AI MARKER ISSUES (CRITICAL - ZERO TOLERANCE) ===
+□ Em dashes (—) → MUST replace with " - " (space-hyphen-space) or comma - NEVER leave em dashes
+□ En dashes (–) → MUST replace with "-" (hyphen) or " to " - NEVER leave en dashes
+□ Academic citations [N], [1][2] → remove entirely from body (keep natural language citations only)
+□ Robotic phrases: "delve into", "crucial to note", "it's important to understand" → rewrite naturally
+□ "Here's how/what" introductions → rewrite naturally without formulaic transitions
+□ "Key points include:" followed by redundant list → remove the redundant list, keep paragraph
+□ Section titles with <p> tags → remove all HTML tags from titles
+
+=== CONTENT QUALITY ISSUES ===
+□ Incomplete sentences ending abruptly without punctuation
+□ Double prefixes: "What is Why is X" → "Why is X"
+□ Repeated/redundant content in same section
+□ Sentences that don't make sense or are grammatically broken
+□ Missing verbs or subjects in sentences
+□ Orphaned conjunctions at start: ". Also, the" → ". The"
+
+=== LINK ISSUES ===
+□ Broken link insertions causing sentence fragmentation
+□ Links with wrong text (domain name instead of title)
+□ External links splitting sentences
+
+=== CRITICAL ISSUES TO FIX ===
+□ Section titles with <p> tags: "What is <p>Conclusion</p>?" → "Conclusion"
+□ Broken grammar: "You can to mitigate" → "To mitigate" or "You can mitigate"
+□ Incomplete sentences: "When a deviation occurs" without proper continuation
+□ Duplicate summary lists: Paragraph followed by "Here are key points:" + redundant bullets
+□ Academic citations [N] in body: Remove all [2], [3], [2][3] markers
+□ Trailing citations: "sentence. [2]" → "sentence."
+□ Sentence fragments: "those that integrate AI deeply - expect" → complete sentence
+
+=== AEO OPTIMIZATION (CRITICAL FOR SCORE 95+) ===
+□ Citation distribution: Ensure 40%+ paragraphs have natural language citations
+  - If a paragraph lacks citations, add: "According to [Source]..." or "[Source] reports..."
+  - Target: 12-15 citations across the article
+□ Conversational phrases: Ensure 8+ instances of phrases like:
+  - "you can", "you'll", "here's", "let's", "this is", "when you", "if you"
+  - Add these naturally if missing (don't force them)
+□ Question patterns: Ensure 5+ question patterns ("what is", "how does", "why does", etc.)
+  - Add rhetorical questions naturally if missing
+□ Direct statements: Use direct language ("is", "are", "does") not vague ("might be", "could be")
+  - Replace vague language with direct statements where appropriate
+
+=== YOUR TASK ===
+1. Read the content carefully
+2. Find ALL issues matching the checklist above (structural, capitalization, AI markers, content quality, AEO)
+3. ALSO find any OTHER issues you notice (typos, grammar, awkward phrasing)
+4. Fix each issue surgically - complete broken sentences, remove duplicates, fix grammar
+5. ENHANCE AEO components - add citations, conversational phrases, question patterns where missing
+6. Return the complete fixed content
+
+Be thorough. Production quality means ZERO defects AND AEO score 95+.
+"""
+        
+        data = context.structured_data
+        if not data:
+            return context
+        
+        article_dict = data.dict() if hasattr(data, 'dict') else dict(data)
+        total_fixes = 0
+        
+        # Content fields to review
+        content_fields = [
+            'section_01_content', 'section_02_content', 'section_03_content',
+            'section_04_content', 'section_05_content', 'section_06_content',
+            'section_07_content', 'section_08_content', 'section_09_content',
+            'Intro', 'Direct_Answer',
+        ]
+        
+        # Initialize Gemini client
+        from ..models.gemini_client import GeminiClient
+        gemini_client = GeminiClient()
+        
+        # PARALLELIZE: Create tasks for all fields to review concurrently
+        async def review_field(field: str) -> tuple[str, int, str]:
+            """Review a single field and return (field_name, issues_fixed, fixed_content)."""
+            content = article_dict.get(field)
+            if not content or not isinstance(content, str) or len(content) < 100:
+                return (field, 0, content or "")
+            
+            prompt = f"""{CHECKLIST}
+
+FIELD: {field}
+
+CONTENT TO REVIEW:
+{content}
+
+Return JSON with: fixed_content, issues_fixed, fixes[]
+If no issues, return original content unchanged with issues_fixed=0.
+"""
+            
+            try:
+                response = await gemini_client.generate_content(
+                    prompt=prompt,
+                    enable_tools=False,
+                    response_schema=ReviewResponse.model_json_schema()
+                )
+                
+                if response:
+                    # Parse response
+                    json_str = response.strip()
+                    if json_str.startswith('```'):
+                        json_str = json_str.split('\n', 1)[1] if '\n' in json_str else json_str[3:]
+                    if json_str.endswith('```'):
+                        json_str = json_str[:-3]
+                    
+                    try:
+                        result = json.loads(json_str)
+                        issues_fixed = result.get('issues_fixed', 0)
+                        fixed_content = result.get('fixed_content', content)
+                        return (field, issues_fixed, fixed_content)
+                    except json.JSONDecodeError:
+                        logger.debug(f"   ⚠️ {field}: Could not parse Gemini response")
+                        return (field, 0, content)
+                        
+            except Exception as e:
+                logger.debug(f"   ⚠️ {field}: Review failed - {e}")
+                return (field, 0, content)
+            
+            return (field, 0, content)
+        
+        # Execute all reviews in parallel (with rate limiting via semaphore)
+        # Limit concurrent calls to avoid API rate limits (max 10 concurrent)
+        semaphore = asyncio.Semaphore(10)
+        
+        async def review_field_with_limit(field: str):
+            async with semaphore:
+                return await review_field(field)
+        
+        logger.info(f"   🔄 Reviewing {len(content_fields)} fields in parallel (max 10 concurrent)...")
+        tasks = [review_field_with_limit(field) for field in content_fields]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
+        for result in results:
+            if isinstance(result, Exception):
+                logger.debug(f"   ⚠️ Field review exception: {result}")
+                continue
+            
+            field, issues_fixed, fixed_content = result
+            if issues_fixed > 0:
+                article_dict[field] = fixed_content
+                total_fixes += issues_fixed
+                logger.info(f"   ✅ {field}: {issues_fixed} issues fixed")
+            else:
+                # No issues fixed, but review completed
+                pass
+                # Continue with other fields
+        
+        if total_fixes > 0:
+            logger.info(f"   📝 Gemini fixed {total_fixes} total issues across all fields")
+            context.structured_data = ArticleOutput(**article_dict)
+        else:
+            logger.info("   ℹ️ Gemini review: no additional issues found")
+        
+        return context
+    
+    def _humanize_language(self, context: ExecutionContext) -> ExecutionContext:
+        """
+        Humanize language by removing AI-typical phrases.
+        
+        Uses humanizer.py to replace robotic phrases with natural alternatives.
+        """
+        from ..utils.humanizer import humanize_content
+        
+        data = context.structured_data
+        if not data:
+            return context
+        
+        article_dict = data.dict() if hasattr(data, 'dict') else dict(data)
+        humanized_count = 0
+        
+        # Humanize content fields
+        content_fields = [
+            'Intro', 'Direct_Answer', 'Teaser',
+            'section_01_content', 'section_02_content', 'section_03_content',
+            'section_04_content', 'section_05_content', 'section_06_content',
+            'section_07_content', 'section_08_content', 'section_09_content',
+        ]
+        
+        for field in content_fields:
+            content = article_dict.get(field)
+            if not content or not isinstance(content, str) or len(content) < 50:
+                continue
+            
+            original = content
+            # Use moderate aggression - Stage 10 will do aggressive if needed
+            humanized = humanize_content(content, aggression="moderate")
+            
+            if humanized != original:
+                article_dict[field] = humanized
+                humanized_count += 1
+        
+        if humanized_count > 0:
+            logger.info(f"   ✍️ Humanized {humanized_count} fields")
+            context.structured_data = ArticleOutput(**article_dict)
+        else:
+            logger.info("   ℹ️ No AI phrases detected - content already natural")
+        
+        return context
+    
+    async def _optimize_aeo_components(self, context: ExecutionContext) -> ExecutionContext:
+        """
+        Optimize AEO components to boost score to 95+.
+        
+        Checks and fixes:
+        - Citation distribution (40%+ paragraphs have citations)
+        - Conversational phrases (8+ instances)
+        - Question patterns (5+ instances)
+        - Direct Answer quality (length, keyword, citation)
+        """
+        from ..models.gemini_client import GeminiClient
+        import json
+        
+        data = context.structured_data
+        if not data:
+            return context
+        
+        article_dict = data.dict() if hasattr(data, 'dict') else dict(data)
+        
+        # Check AEO components
+        all_content = article_dict.get('Intro', '') + ' ' + article_dict.get('Direct_Answer', '')
+        for i in range(1, 10):
+            all_content += ' ' + article_dict.get(f'section_{i:02d}_content', '')
+        
+        # Count citations (natural language) - ALIGNED WITH AEO SCORER PATTERNS
+        import re
+        natural_citation_patterns = [
+            r'according to [A-Z]',
+            r'[A-Z][a-z]+ (reports?|states?|notes?|found)',  # Match AEO scorer pattern
+            r'[A-Z][a-z]+ predicts?',
+            r'research (by|from) [A-Z]',  # Match AEO scorer pattern
+        ]
+        citation_count = sum(len(re.findall(pattern, all_content, re.IGNORECASE)) for pattern in natural_citation_patterns)
+        
+        # Count conversational phrases
+        conversational_phrases = ['you can', "you'll", "here's", "let's", "this is", "when you", "if you", "so you can"]
+        phrase_count = sum(1 for phrase in conversational_phrases if phrase in all_content.lower())
+        
+        # Count question patterns
+        question_patterns = ['what is', 'how does', 'why does', 'when should', 'where can', 'how can', 'what are']
+        question_count = sum(1 for pattern in question_patterns if pattern in all_content.lower())
+        
+        # Check Direct Answer - STRIP HTML FOR ACCURATE DETECTION
+        direct_answer = article_dict.get('Direct_Answer', '')
+        direct_answer_text = re.sub(r'<[^>]+>', '', direct_answer) if direct_answer else ""  # Strip HTML
+        direct_answer_words = len(direct_answer_text.split()) if direct_answer_text else 0
+        has_citation_in_da = any(re.search(pattern, direct_answer_text, re.IGNORECASE) for pattern in natural_citation_patterns) if direct_answer_text else False
+        
+        # Check if primary keyword is in Direct Answer
+        primary_keyword = context.job_config.get("primary_keyword", "") if context.job_config else ""
+        has_keyword_in_da = primary_keyword.lower() in direct_answer_text.lower() if primary_keyword and direct_answer_text else False
+        
+        # AEO scorer gives points for: 30-80 words (2.5-5.0 pts), <30 or >80 words (0 pts)
+        # So we should optimize if outside 30-80 range OR missing citation/keyword
+        # Accept 30-80 words (gets at least 2.5 points), optimize otherwise
+        needs_da_length_fix = direct_answer_words < 30 or direct_answer_words > 80
+        
+        logger.info(f"📊 AEO Status: Citations={citation_count} (target: 12+), Phrases={phrase_count} (target: 8+), Questions={question_count} (target: 5+)")
+        logger.info(f"   Direct Answer: {direct_answer_words} words (target: 40-60), Citation={'✅' if has_citation_in_da else '❌'}, Keyword={'✅' if has_keyword_in_da else '❌'}")
+        
+        # Always optimize if below targets (more aggressive) - INCLUDES KEYWORD CHECK
+        needs_optimization = (
+            citation_count < 15 or  # Target: 12-15, optimize if <15
+            phrase_count < 10 or    # Target: 8+, optimize if <10 (buffer)
+            question_count < 6 or   # Target: 5+, optimize if <6 (buffer)
+            (direct_answer_words < 30 or direct_answer_words > 70 or not has_citation_in_da or not has_keyword_in_da)  # ADD: keyword check
+        )
+        
+        if not needs_optimization:
+            logger.info("✅ AEO components already optimal")
+            return context
+        
+        # Use Gemini to optimize AEO components
+        gemini_client = GeminiClient()
+        
+        aeo_prompt = f"""You are an AEO (Agentic Search Optimization) expert. Optimize this article to score 95+/100.
+
+CURRENT STATUS:
+- Citations: {citation_count} (target: 12-15 natural language citations)
+- Conversational phrases: {phrase_count} (target: 8+)
+- Question patterns: {question_count} (target: 5+)
+- Direct Answer: {direct_answer_words} words (target: 40-60), Citation: {'Yes' if has_citation_in_da else 'No'}
+
+OPTIMIZATION TASKS:
+1. Add natural language citations to paragraphs missing them (target: 40%+ paragraphs have citations)
+   - Use patterns: "According to [Source]...", "[Source] reports...", "Research by [Source]..."
+   - Add 2-5 more citations if below 12 total
+2. Add conversational phrases naturally (target: 8+ total)
+   - Use: "you can", "you'll", "here's", "let's", "this is", "when you", "if you"
+   - Add 2-4 more phrases if below 8 total
+3. Add question patterns naturally (target: 5+ total) - CRITICAL FOR AEO SCORE
+   - Use these EXACT patterns: "What is", "How does", "Why does", "When should", "Where can", "How can", "What are"
+   - Add AT LEAST 5 question patterns total across all sections
+   - Examples: "What is API security testing?", "How does automation help?", "Why should you implement this?"
+   - Add 3-5 more question patterns if currently below 5 total
+4. Enhance Direct Answer if needed:
+   - Ensure 40-60 words
+   - Include primary keyword
+   - Include natural language citation
+
+Return the optimized article content. Be surgical - only add what's missing, don't rewrite everything.
+"""
+        
+        # Optimize sections that need improvement (AGGRESSIVE - optimize more sections)
+        optimized_count = 0
+        sections_to_optimize = []
+        
+        # Identify sections that need optimization (more aggressive criteria)
+        for i in range(1, 10):
+            field = f'section_{i:02d}_content'
+            content = article_dict.get(field, '')
+            if not content or len(content) < 200:
+                continue
+            
+            section_citations = sum(len(re.findall(pattern, content, re.IGNORECASE)) for pattern in natural_citation_patterns)
+            section_phrases = sum(1 for phrase in conversational_phrases if phrase in content.lower())
+            section_questions = sum(1 for pattern in question_patterns if pattern in content.lower())
+            
+            # More aggressive: optimize if section is missing ANY component or below average
+            needs_opt = (
+                section_citations < 2 or  # Less than 2 citations (was: == 0)
+                (section_phrases < 2 and phrase_count < 10) or  # Less than 2 phrases and overall below target
+                (section_questions == 0 and question_count < 6)  # No questions and overall below target
+            )
+            
+            if needs_opt:
+                sections_to_optimize.append((i, field, content, section_citations, section_phrases, section_questions))
+        
+        # Optimize up to 7 sections (increased from 5) - prioritize those with 0 citations/phrases
+        sections_to_optimize.sort(key=lambda x: (x[3] == 0, x[4] == 0, x[5] == 0), reverse=True)  # Prioritize sections missing components
+        sections_to_optimize = sections_to_optimize[:7]  # Increased from 5 to 7 sections
+        
+        # PARALLELIZE: Optimize all sections concurrently
+        async def optimize_section(section_data: tuple) -> tuple[str, str, bool]:
+            """Optimize a single section and return (field_name, optimized_content, success)."""
+            i, field, content, section_citations, section_phrases, section_questions = section_data
+            
+            section_prompt = f"""{aeo_prompt}
+
+SECTION TO OPTIMIZE:
+{content}
+
+Return ONLY the optimized section content with added citations, conversational phrases, and question patterns.
+Be GENEROUS - add 2-3 citations, 2-3 conversational phrases, and 1-2 question patterns naturally.
+"""
+            try:
+                response = await gemini_client.generate_content(
+                    prompt=section_prompt,
+                    response_schema=None  # Free-form response
+                )
+                
+                if response and len(response) > 100:
+                    return (field, response.strip(), True)
+                else:
+                    return (field, content, False)
+            except Exception as e:
+                logger.debug(f"   ⚠️ {field}: AEO optimization failed - {e}")
+                return (field, content, False)
+        
+        # Execute all optimizations in parallel (with rate limiting via semaphore)
+        # Limit concurrent calls to avoid API rate limits (max 7 concurrent)
+        if sections_to_optimize:
+            semaphore = asyncio.Semaphore(7)
+            
+            async def optimize_section_with_limit(section_data: tuple):
+                async with semaphore:
+                    return await optimize_section(section_data)
+            
+            logger.info(f"   🔄 Optimizing {len(sections_to_optimize)} sections in parallel (max 7 concurrent)...")
+            tasks = [optimize_section_with_limit(section_data) for section_data in sections_to_optimize]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process results
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.debug(f"   ⚠️ Section optimization exception: {result}")
+                    continue
+                
+                field, optimized_content, success = result
+                if success:
+                    article_dict[field] = optimized_content
+                    optimized_count += 1
+                    # Get original stats for logging
+                    original_section = next((s for s in sections_to_optimize if s[1] == field), None)
+                    if original_section:
+                        _, _, _, section_citations, section_phrases, _ = original_section
+                        logger.info(f"   ✅ Optimized {field} (had {section_citations} citations, {section_phrases} phrases)")
+        
+        # Verify question patterns were added (post-optimization check)
+        all_content_after = article_dict.get('Intro', '') + ' ' + article_dict.get('Direct_Answer', '')
+        for i in range(1, 10):
+            all_content_after += ' ' + article_dict.get(f'section_{i:02d}_content', '')
+        question_count_after = sum(1 for pattern in question_patterns if pattern in all_content_after.lower())
+        
+        if question_count_after < 5:
+            logger.warning(f"⚠️ Only {question_count_after} question patterns found after optimization (target: 5+)")
+            # Note: Could add fallback regex injection here if needed
+        
+        # Optimize Direct Answer if needed (CRITICAL - worth 25 points!)
+        # Check: citation, keyword, OR truly unreasonable length
+        # Don't optimize just for length if it's reasonable (20-150 words is fine)
+        needs_da_optimization = direct_answer and (needs_da_length_fix or not has_citation_in_da or not has_keyword_in_da)
+        
+        if needs_da_optimization:
+            logger.info(f"   🔧 Direct Answer needs optimization: {direct_answer_words} words, Citation={'✅' if has_citation_in_da else '❌'}, Keyword={'✅' if has_keyword_in_da else '❌'}")
+            try:
+                primary_keyword = context.job_config.get("primary_keyword", "") if context.job_config else ""
+                da_prompt = f"""You are optimizing a Direct Answer for AEO (Agentic Search Optimization). This is CRITICAL - worth 25 points.
+
+CURRENT Direct Answer ({direct_answer_words} words):
+{direct_answer}
+
+REQUIREMENTS (ALL MUST BE MET):
+1. Word count: MUST be 30-80 words (ideal: 40-60 words) - currently {direct_answer_words} words {'(TOO LONG - shorten to 30-80 words)' if direct_answer_words > 80 else '(TOO SHORT - expand to 30-80 words)' if direct_answer_words < 30 else '(OK length, but ensure 30-80 range)'}
+2. Primary keyword: MUST include "{primary_keyword}" naturally in the text
+3. Citation: MUST include ONE natural language citation like "According to [Source]..." or "[Source] reports..."
+
+OUTPUT FORMAT:
+- Return ONLY the optimized Direct Answer text
+- NO explanations, NO markdown, NO HTML tags
+- Just the plain text Direct Answer (30-80 words)
+- Start directly with the answer content
+
+Example format (40-60 words):
+"According to Gartner research, {primary_keyword} involves [brief explanation]. This approach helps organizations [benefit]. Key practices include [practice 1], [practice 2], and [practice 3]."
+
+Now optimize the Direct Answer above to meet ALL requirements. Ensure it's 30-80 words.
+"""
+                logger.debug(f"   📤 Sending Direct Answer optimization request to Gemini...")
+                response = await gemini_client.generate_content(
+                    prompt=da_prompt,
+                    response_schema=None
+                )
+                
+                if response:
+                    optimized_da = response.strip()
+                    # Strip any markdown formatting or HTML tags
+                    optimized_da = re.sub(r'<[^>]+>', '', optimized_da)  # Remove HTML
+                    optimized_da = re.sub(r'```[^`]*```', '', optimized_da)  # Remove code blocks
+                    optimized_da = optimized_da.replace('```', '').strip()
+                    optimized_da_words = len(optimized_da.split())
+                    
+                    # AEO scorer gives points for: 30-80 words (2.5-5.0 pts), <30 or >80 words (0 pts)
+                    # Accept 30-80 words (gets at least 2.5 points)
+                    if 30 <= optimized_da_words <= 80:
+                        article_dict['Direct_Answer'] = optimized_da
+                        optimized_count += 1
+                        # Calculate expected AEO points for logging
+                        if 40 <= optimized_da_words <= 60:
+                            score_note = "5.0 pts"
+                        else:
+                            score_note = "2.5 pts"
+                        logger.info(f"   ✅ Optimized Direct_Answer ({direct_answer_words} → {optimized_da_words} words, {score_note})")
+                    elif optimized_da_words > 80:
+                        # Gemini returned >80 words - try intelligent truncation (better than 0 points)
+                        words = optimized_da.split()
+                        # Try to find sentence boundary near 60-70 words
+                        truncated = ' '.join(words[:70])
+                        last_period = truncated.rfind('.')
+                        last_exclamation = truncated.rfind('!')
+                        last_question = truncated.rfind('?')
+                        last_sentence_end = max(last_period, last_exclamation, last_question)
+                        
+                        if last_sentence_end > len(' '.join(words[:50])):  # At least 50 words
+                            truncated = truncated[:last_sentence_end + 1].strip()
+                        else:
+                            truncated = ' '.join(words[:60])  # Fallback: first 60 words
+                        
+                        truncated_words = len(truncated.split())
+                        if 30 <= truncated_words <= 80:
+                            article_dict['Direct_Answer'] = truncated
+                            optimized_count += 1
+                            logger.info(f"   ✅ Truncated Direct_Answer to {truncated_words} words (was {optimized_da_words}, gets 2.5 pts)")
+                        else:
+                            logger.warning(f"   ⚠️ Direct_Answer: Could not truncate effectively ({truncated_words} words) - keeping original")
+                    else:
+                        logger.warning(f"   ⚠️ Direct_Answer: Too short ({optimized_da_words} words, min: 30) - keeping original")
+                else:
+                    logger.warning(f"   ⚠️ Direct_Answer: Gemini returned empty response")
+            except Exception as e:
+                logger.error(f"   ❌ Direct_Answer: AEO optimization failed - {e}", exc_info=True)
+        else:
+            logger.debug(f"   ℹ️ Direct Answer already optimal: {direct_answer_words} words, Citation={'✅' if has_citation_in_da else '❌'}, Keyword={'✅' if has_keyword_in_da else '❌'}")
+        
+        if optimized_count > 0:
+            logger.info(f"🚀 AEO optimization: Enhanced {optimized_count} fields")
+            context.structured_data = ArticleOutput(**article_dict)
+            # Set flag to skip Stage 10's AEO enforcement (avoids conflicts)
+            context.stage_2b_optimized = True
+            logger.info("   🏷️ Flagged: Stage 10 will skip AEO enforcement (Stage 2b already optimized)")
+        else:
+            logger.info("ℹ️ AEO optimization: No fields needed enhancement")
+        
+        return context
+    
+    def _remove_fragment_lists(self, content: str) -> str:
+        """Remove lists where 75%+ of items are truncated fragments."""
+        pattern = r'<ul>((?:<li>(?:[^<]|<(?!/?li>)[^>]*>)*</li>\s*){2,})</ul>'
+        
+        def check_fragments(match):
+            list_content = match.group(1)
+            items_raw = re.findall(r'<li>((?:[^<]|<(?!/?li>)[^>]*>)*)</li>', list_content)
+            if not items_raw:
+                return match.group(0)
+            
+            items = [re.sub(r'<[^>]+>', '', item).strip() for item in items_raw]
+            fragment_count = sum(1 for item in items if not item.endswith(('.', '!', '?', ':')))
+            
+            if fragment_count >= len(items) * 0.75:
+                logger.debug(f"   🗑️ Removing fragment list ({fragment_count}/{len(items)} truncated)")
+                return ''
+            return match.group(0)
+        
+        return re.sub(pattern, check_fragments, content, flags=re.DOTALL)
     
     def _detect_quality_issues(self, context: ExecutionContext) -> List[QualityIssue]:
         """

@@ -31,6 +31,7 @@ try:
     from ..blog_generation.stage_09_image import ImageStage
     from ..blog_generation.stage_10_cleanup import CleanupStage
     from ..blog_generation.stage_11_storage import StorageStage
+    from ..blog_generation.stage_12_hybrid_similarity_check import HybridSimilarityCheckStage
     from ..blog_generation.stage_12_review_iteration import ReviewIterationStage
 except ImportError as e:
     logging.error(f"Failed to import stage modules: {e}")
@@ -125,7 +126,9 @@ class ProductionStageFactory(IStageFactory):
         """
         registry = {}
         
-        # Standard pipeline stages (0-12)
+        # Standard pipeline stages (0-13)
+        # NOTE: Stage 2b (QualityRefinementStage) is NOT registered here.
+        # It's executed conditionally via _execute_stage_2b_conditional() after Stage 3.
         stage_classes = [
             (0, DataFetchStage),
             (1, PromptBuildStage),
@@ -139,7 +142,8 @@ class ProductionStageFactory(IStageFactory):
             (9, ImageStage),
             (10, CleanupStage),
             (11, StorageStage),
-            (12, ReviewIterationStage),
+            (12, HybridSimilarityCheckStage),
+            (13, ReviewIterationStage),
         ]
         
         for stage_num, stage_class in stage_classes:

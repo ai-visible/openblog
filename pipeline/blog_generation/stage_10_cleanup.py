@@ -102,12 +102,22 @@ class CleanupStage(Stage):
         # Step 4: Merge parallel results
         logger.debug("Step 32: Merging parallel results...")
         merged_article = self._merge_parallel_results(normalized_article, context.parallel_results)
+        
+        # Step 4a.0: Resolve proxy URLs in Sources field
+        logger.debug("Step 32a.0: Resolving proxy URLs in Sources field...")
+        if "Sources" in merged_article:
+            merged_article = self._resolve_sources_proxy_urls(merged_article)
 
         # Step 4a: Enforce AEO requirements (post-processing corrections)
-        # Pass language for language-aware phrase injection
+        # Skip if Stage 2b already optimized (avoids conflicts with natural language citations/phrases)
         language = context.job_config.get("language", "en")
-        logger.debug(f"Step 32a: Enforcing AEO requirements (language={language})...")
-        merged_article = self._enforce_aeo_requirements(merged_article, context.job_config, language)
+        if context.stage_2b_optimized:
+            logger.info("⏭️ Skipping Stage 10 AEO enforcement (Stage 2b already optimized with natural language)")
+            logger.debug("   Stage 2b uses Gemini for natural citations/phrases, Stage 10 uses regex for academic [N] citations")
+            logger.debug("   Stage 10's academic citations would be stripped by HTML renderer anyway")
+        else:
+            logger.debug(f"Step 32a: Enforcing AEO requirements (language={language})...")
+            merged_article = self._enforce_aeo_requirements(merged_article, context.job_config, language)
 
         # Step 4a.5: Humanize content (remove AI-typical phrases)
         logger.debug("Step 32a.5: Humanizing content...")
@@ -399,6 +409,19 @@ class CleanupStage(Stage):
             merged["validated_citation_map"] = parallel_results["validated_citation_map"]
         if "validated_source_name_map" in parallel_results:
             merged["validated_source_name_map"] = parallel_results["validated_source_name_map"]
+        
+        # Add source_name_map from Stage 2 grounding (for natural language citation linking)
+        if "source_name_map_from_grounding" in parallel_results:
+            merged["_source_name_map"] = parallel_results["source_name_map_from_grounding"]
+            logger.info(f"📎 Using source_name_map from grounding: {list(merged['_source_name_map'].keys())}")
+        
+        # Add internal links list for in-body linking to related blog posts
+        if "internal_links_list" in parallel_results:
+            merged["internal_links_list"] = parallel_results["internal_links_list"]
+        
+        # Add section-specific internal links (1Komma5 style - below each section)
+        if "section_internal_links" in parallel_results:
+            merged["_section_internal_links"] = parallel_results["section_internal_links"]
 
         logger.info(
             f"Merged {len(parallel_results)} parallel results into article "
@@ -557,9 +580,19 @@ class CleanupStage(Stage):
             Flattened article
         """
         flattened = {}
+        
+        # Keys that should NOT be flattened (preserved as nested dicts)
+        preserve_as_is = {
+            '_section_internal_links',  # Section-specific internal links (1Komma5 style)
+            '_citation_map',  # Citation number → URL mapping
+            '_source_name_map',  # Source name → URL mapping
+        }
 
         for key, value in article.items():
-            if isinstance(value, dict):
+            if key in preserve_as_is:
+                # Keep as-is (don't flatten)
+                flattened[key] = value
+            elif isinstance(value, dict):
                 # Flatten nested dicts with prefix
                 for nested_key, nested_value in value.items():
                     flattened[f"{key}_{nested_key}"] = nested_value
@@ -574,6 +607,55 @@ class CleanupStage(Stage):
                 flattened[key] = value
 
         return flattened
+
+    def _resolve_sources_proxy_urls(self, article: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Resolve proxy URLs in Sources field to real URLs (synchronous version).
+        
+        Gemini writes proxy URLs like:
+        https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQ...
+        
+        We follow 302 redirects to get the real URLs.
+        
+        Args:
+            article: Article dict with Sources field
+            
+        Returns:
+            Article with resolved URLs in Sources field
+        """
+        sources = article.get("Sources", "")
+        if not sources or "vertexaisearch.cloud.google.com" not in sources:
+            return article
+        
+        import httpx
+        
+        lines = sources.split('\n')
+        resolved_lines = []
+        resolved_count = 0
+        
+        for line in lines:
+            match = re.search(r'(https://vertexaisearch\.cloud\.google\.com/[^\s]+)', line)
+            if match:
+                proxy_url = match.group(1)
+                try:
+                    with httpx.Client(timeout=5.0, follow_redirects=True) as client:
+                        response = client.head(proxy_url)
+                        if response.status_code == 200:
+                            real_url = str(response.url)
+                            resolved_line = line.replace(proxy_url, real_url)
+                            resolved_lines.append(resolved_line)
+                            resolved_count += 1
+                            logger.debug(f"   📎 Resolved Sources proxy: {proxy_url[:50]}... → {real_url[:50]}...")
+                            continue
+                except Exception as e:
+                    logger.debug(f"   ⚠️ Failed to resolve Sources proxy URL: {e}")
+            resolved_lines.append(line)
+        
+        if resolved_count > 0:
+            article["Sources"] = '\n'.join(resolved_lines)
+            logger.info(f"✅ Resolved {resolved_count} proxy URLs in Sources field")
+        
+        return article
 
     def _enforce_aeo_requirements(
         self, article: Dict[str, Any], job_config: Dict[str, Any], language: str = "en"
@@ -1119,6 +1201,9 @@ class CleanupStage(Stage):
         for i in range(1, 10):
             title = article.get(f"section_{i:02d}_title", "")
             if title:
+                # CRITICAL FIX: Strip <p> tags BEFORE checking if it's a question
+                import re
+                title = re.sub(r'</?p>', '', title).strip()
                 title_lower = title.lower()
                 first_word = title_lower.split()[0] if title_lower.split() else ""
                 # Count as question if it has a question pattern, ends with ?, or STARTS with a question word
@@ -1143,6 +1228,10 @@ class CleanupStage(Stage):
             title = article.get(f"section_{i:02d}_title", "")
             if not title:
                 continue
+            
+            # CRITICAL FIX: Strip <p> tags from titles (defense in depth - Stage 2b should have done this, but ensure it here)
+            import re
+            title = re.sub(r'</?p>', '', title).strip()
             
             title_lower = title.lower()
             first_word = title_lower.split()[0] if title_lower.split() else ""
@@ -1269,6 +1358,8 @@ class CleanupStage(Stage):
                         # Keep original - too long/descriptive to be a question
                         continue
             
+            # Final cleanup: ensure no <p> tags in final title (defense in depth)
+            new_title = re.sub(r'</?p>', '', new_title).strip()
             article[f"section_{i:02d}_title"] = new_title
             converted += 1
             logger.debug(f"Converted section {i} title to question: '{new_title}'")

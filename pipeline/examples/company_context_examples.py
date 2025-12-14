@@ -20,7 +20,7 @@ def get_scaile_example() -> CompanyContext:
         description="SCAILE provides an AI Visibility Engine designed to help B2B companies and startups appear in AI-generated search results like Google AI Overviews and ChatGPT. By focusing on Answer Engine Optimization (AEO) rather than traditional SEO, they offer a productized, automated solution to turn brands into authoritative sources for high-intent AI queries.",
         
         # OPTIONAL FIELDS - Products & Services
-        products_services=[
+        products=[  # Renamed from products_services to match opencontext
             "AI Visibility Engine",
             "AEO Foundation (30 articles/mo)",
             "AEO Expansion (50 articles/mo)", 
@@ -36,7 +36,7 @@ def get_scaile_example() -> CompanyContext:
             "iPullRank", "First Page Sage", "AWISEE", "WebFX", 
             "Intero Digital", "Nine Peaks Media"
         ],
-        brand_tone="Professional, results-oriented, innovative, confident, and efficient (emphasizing 'productized' solutions over 'selling hours').",
+        tone="Professional, results-oriented, innovative, confident, and efficient (emphasizing 'productized' solutions over 'selling hours').",  # Renamed from brand_tone to match opencontext
         
         # OPTIONAL FIELDS - Business Context
         pain_points=[

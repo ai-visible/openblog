@@ -91,6 +91,8 @@ def build_article_response_schema(genai):
     
     # Build properties dynamically from ArticleOutput model
     properties = {}
+    required = []
+    
     for field_name, field_info in ArticleOutput.model_fields.items():
         if field_name == "tables":
             # Special handling for tables (ARRAY of OBJECT)
@@ -105,15 +107,16 @@ def build_article_response_schema(genai):
                 type=types.Type.STRING,
                 description=field_info.description or f"{field_name} field"
             )
+        
+        # Mark as required if field is required (using Pydantic's is_required())
+        if field_info.is_required():
+            required.append(field_name)
     
-    # Main ArticleOutput schema
+    # Main ArticleOutput schema with dynamically determined required fields
     return types.Schema(
         type=types.Type.OBJECT,
         properties=properties,
-        required=[
-            "Headline", "Teaser", "Direct_Answer", "Intro", "Meta_Title", "Meta_Description",
-            "section_01_title", "section_01_content"  # At least one section required
-        ]
+        required=required if required else None  # None if no required fields (shouldn't happen)
     )
 
 
@@ -225,6 +228,8 @@ class GeminiClient:
         
         # Store grounding URLs from last API call
         self._last_grounding_urls: List[Dict[str, str]] = []
+        # Store grounding supports from last API call (for precise link insertion)
+        self._last_grounding_supports: List[Dict] = []
         
         # Initialize client with appropriate API version
         try:
@@ -360,16 +365,44 @@ class GeminiClient:
                             logger.info("🔍 Google Search grounding used")
                         if hasattr(gm, 'grounding_chunks') and gm.grounding_chunks:
                             logger.info(f"📎 {len(gm.grounding_chunks)} grounding sources")
-                            # CRITICAL: Extract actual URLs from grounding chunks
+                            # CRITICAL: Extract URLs from grounding chunks
+                            # The 'uri' is a proxy URL (vertexaisearch.cloud.google.com)
+                            # The 'title' contains the real domain (e.g., "sportingnews.com")
+                            # We resolve the proxy to get the real URL
                             for chunk in gm.grounding_chunks:
                                 if hasattr(chunk, 'web') and chunk.web:
-                                    url = getattr(chunk.web, 'uri', None)
+                                    proxy_url = getattr(chunk.web, 'uri', None)
                                     title = getattr(chunk.web, 'title', None)
-                                    if url:
-                                        grounding_urls.append({'url': url, 'title': title or url})
-                                        logger.debug(f"   📎 {title}: {url}")
+                                    if proxy_url:
+                                        # Resolve proxy URL to real URL
+                                        real_url = self._resolve_proxy_url(proxy_url)
+                                        grounding_urls.append({
+                                            'url': real_url,
+                                            'proxy_url': proxy_url,
+                                            'title': title or real_url,
+                                            'domain': title  # Title is the domain
+                                        })
+                                        logger.debug(f"   📎 {title}: {real_url}")
                             if grounding_urls:
-                                logger.info(f"✅ Extracted {len(grounding_urls)} specific source URLs from grounding")
+                                logger.info(f"✅ Extracted {len(grounding_urls)} grounding URLs (resolved from proxy)")
+                        
+                        # CRITICAL: Extract grounding supports for precise link insertion
+                        grounding_supports = []
+                        if hasattr(gm, 'grounding_supports') and gm.grounding_supports:
+                            logger.info(f"📍 {len(gm.grounding_supports)} grounding supports (for inline links)")
+                            for support in gm.grounding_supports:
+                                segment = getattr(support, 'segment', None)
+                                chunk_indices = getattr(support, 'grounding_chunk_indices', [])
+                                if segment and chunk_indices:
+                                    grounding_supports.append({
+                                        'start_index': getattr(segment, 'start_index', 0),
+                                        'end_index': getattr(segment, 'end_index', 0),
+                                        'text': getattr(segment, 'text', ''),
+                                        'chunk_indices': list(chunk_indices)
+                                    })
+                            self._last_grounding_supports = grounding_supports
+                        else:
+                            self._last_grounding_supports = []
                 
                 # Store grounding URLs for later use (will be injected into Sources field)
                 self._last_grounding_urls = grounding_urls
@@ -455,6 +488,129 @@ class GeminiClient:
             These are the ACTUAL source URLs found by Gemini's deep research.
         """
         return self._last_grounding_urls.copy()
+    
+    def get_last_grounding_supports(self) -> List[Dict]:
+        """
+        Get the grounding supports from the last API call.
+        
+        Returns:
+            List of dicts with segment info (start_index, end_index, text) and chunk_indices.
+            These map exact text positions to their source URLs.
+        """
+        return self._last_grounding_supports.copy()
+    
+    def insert_inline_links_in_json(self, json_data: dict) -> dict:
+        """
+        Insert HTML links into JSON content fields using groundingSupports metadata.
+        
+        This is Option B: Uses Gemini's grounding metadata to insert links
+        by matching segment text within JSON content fields.
+        
+        Args:
+            json_data: Parsed JSON response from Gemini (ArticleOutput structure)
+            
+        Returns:
+            JSON data with HTML links inserted in content fields
+        """
+        if not self._last_grounding_supports or not self._last_grounding_urls:
+            logger.info("No grounding metadata available for link insertion")
+            return json_data
+        
+        # Content fields that should have links inserted
+        content_fields = [
+            'Intro', 'Direct_Answer', 'Teaser',
+            'section_01_content', 'section_02_content', 'section_03_content',
+            'section_04_content', 'section_05_content', 'section_06_content',
+            'section_07_content', 'section_08_content', 'section_09_content',
+            'paa_01_answer', 'paa_02_answer', 'paa_03_answer', 'paa_04_answer',
+            'faq_01_answer', 'faq_02_answer', 'faq_03_answer', 
+            'faq_04_answer', 'faq_05_answer', 'faq_06_answer',
+        ]
+        
+        # Build segment -> link mapping
+        segment_to_link = {}
+        for support in self._last_grounding_supports:
+            segment_text = support.get('text', '').strip()
+            chunk_indices = support.get('chunk_indices', [])
+            
+            if not segment_text or not chunk_indices:
+                continue
+            
+            # Get URL from first chunk index
+            first_idx = chunk_indices[0]
+            if first_idx < len(self._last_grounding_urls):
+                source = self._last_grounding_urls[first_idx]
+                url = source.get('url', '')
+                title = source.get('title', source.get('domain', 'Source'))
+                
+                if url and url.startswith('http'):
+                    segment_to_link[segment_text] = {
+                        'url': url,
+                        'title': title
+                    }
+        
+        if not segment_to_link:
+            logger.info("No valid grounding segments to insert")
+            return json_data
+        
+        logger.info(f"📎 Found {len(segment_to_link)} grounding segments with URLs")
+        
+        # Insert links in content fields
+        links_inserted = 0
+        modified_data = json_data.copy()
+        
+        for field in content_fields:
+            if field not in modified_data or not modified_data[field]:
+                continue
+            
+            content = modified_data[field]
+            original_content = content
+            
+            # Try to match each segment and insert link after it
+            for segment_text, link_info in segment_to_link.items():
+                # Only insert if segment is substantial (avoid short matches)
+                if len(segment_text) < 20:
+                    continue
+                
+                # Check if segment exists in content (may be truncated in metadata)
+                # Try exact match first
+                if segment_text in content:
+                    url = link_info['url']
+                    title = link_info['title']
+                    # Insert link after the segment
+                    link_html = f' <a href="{url}" target="_blank" rel="noopener" title="{title}">[{title}]</a>'
+                    content = content.replace(segment_text, segment_text + link_html, 1)
+                    links_inserted += 1
+                else:
+                    # Try matching first 50 chars of segment (grounding text may be truncated)
+                    partial = segment_text[:50]
+                    if len(partial) >= 20 and partial in content:
+                        # Find where the sentence ends after this partial match
+                        idx = content.find(partial)
+                        if idx >= 0:
+                            # Find end of sentence (., !, ?)
+                            end_idx = idx + len(partial)
+                            for i in range(end_idx, min(end_idx + 100, len(content))):
+                                if content[i] in '.!?':
+                                    end_idx = i + 1
+                                    break
+                            
+                            url = link_info['url']
+                            title = link_info['title']
+                            link_html = f' <a href="{url}" target="_blank" rel="noopener" title="{title}">[{title}]</a>'
+                            content = content[:end_idx] + link_html + content[end_idx:]
+                            links_inserted += 1
+                            break  # Only one link per segment per field
+            
+            if content != original_content:
+                modified_data[field] = content
+        
+        if links_inserted > 0:
+            logger.info(f"✅ Inserted {links_inserted} inline source links via groundingSupports")
+        else:
+            logger.info("ℹ️ No matching segments found for link insertion")
+        
+        return modified_data
 
     async def _try_dataforseo_fallback(
         self, 
@@ -763,6 +919,40 @@ Use these sources to inform your content. Cite specific sources where appropriat
             properties=props,
             required=required if required else None,
         )
+
+    def _resolve_proxy_url(self, proxy_url: str) -> str:
+        """
+        Resolve a Gemini grounding proxy URL to the real destination URL.
+        
+        Gemini's grounding returns URLs like:
+        https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQ...
+        
+        These redirect (302) to the actual source URL. We follow the redirect
+        to get the real URL for cleaner citations.
+        
+        Args:
+            proxy_url: The vertexaisearch proxy URL
+            
+        Returns:
+            The real destination URL, or the proxy URL if resolution fails
+        """
+        if not proxy_url or 'vertexaisearch.cloud.google.com' not in proxy_url:
+            return proxy_url
+        
+        try:
+            import requests
+            # Use HEAD request with allow_redirects=False to get redirect location
+            response = requests.head(proxy_url, allow_redirects=False, timeout=5)
+            if response.status_code in (301, 302, 303, 307, 308):
+                real_url = response.headers.get('Location', proxy_url)
+                logger.debug(f"   Resolved proxy → {real_url}")
+                return real_url
+            else:
+                # Not a redirect, return as-is
+                return proxy_url
+        except Exception as e:
+            logger.debug(f"   Failed to resolve proxy URL: {e}")
+            return proxy_url
 
     def __repr__(self) -> str:
         """String representation."""

@@ -35,7 +35,7 @@ Usage in batch generation with regeneration:
   for article_config in batch:
       max_attempts = 3
       for attempt in range(max_attempts):
-          # Generate article (Stages 0-11)
+          # Generate article (Stages 0-12)
           context = await generate_article(article_config, attempt=attempt)
           
           # Check similarity with regeneration
@@ -74,10 +74,19 @@ class RegenerationResult:
 
 class HybridSimilarityCheckStage(Stage):
     """
-    Stage 12: Hybrid similarity check with automatic regeneration.
+    Stage 12: Hybrid similarity check with semantic embeddings.
+    
+    Integrated into main pipeline workflow to detect content cannibalization.
+    Runs after Stage 10 (cleanup) and before Stage 11 (storage).
     
     Combines character-level and semantic similarity analysis to detect
-    content cannibalization and trigger regeneration when needed.
+    content cannibalization and provide similarity reports.
+    
+    Features:
+    - Character shingles for language-agnostic similarity
+    - Semantic embeddings via Gemini API for topic similarity
+    - Batch memory for detecting duplicates within a generation session
+    - Non-blocking: logs warnings but doesn't block publication
     """
 
     stage_num = 12
@@ -89,15 +98,38 @@ class HybridSimilarityCheckStage(Stage):
         
         Args:
             similarity_checker: HybridSimilarityChecker instance.
-                              If None, creates basic character-only checker.
+                              If None, creates checker with semantic embeddings if API key available.
         """
         # Import here to avoid circular imports
-        if similarity_checker is None:
-            self.similarity_checker = HybridSimilarityChecker()
-        else:
-            self.similarity_checker = similarity_checker
+        import os
+        from ..utils.gemini_embeddings import GeminiEmbeddingClient
         
-        self._standalone_mode = similarity_checker is None
+        if similarity_checker is None:
+            # Try to initialize with semantic embeddings if API key available
+            api_key = (
+                os.getenv("GEMINI_API_KEY") or 
+                os.getenv("GOOGLE_API_KEY") or 
+                os.getenv("GOOGLE_GEMINI_API_KEY")
+            )
+            
+            if api_key:
+                try:
+                    embedding_client = GeminiEmbeddingClient(api_key=api_key)
+                    similarity_checker = HybridSimilarityChecker(
+                        embedding_client=embedding_client,
+                        enable_regeneration=False  # Don't auto-regenerate in main pipeline
+                    )
+                    logger.info("✅ Initialized HybridSimilarityChecker with semantic embeddings")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize semantic embeddings: {e}")
+                    logger.info("Falling back to character-only similarity checking")
+                    similarity_checker = HybridSimilarityChecker()
+            else:
+                logger.info("No Gemini API key found - using character-only similarity checking")
+                similarity_checker = HybridSimilarityChecker()
+        
+        self.similarity_checker = similarity_checker
+        self._standalone_mode = False  # Always integrated mode in main pipeline
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:
         """
@@ -166,27 +198,32 @@ class HybridSimilarityCheckStage(Stage):
         """
         Extract article data from ExecutionContext for similarity checking.
         
-        Handles different data sources based on pipeline stage completion.
+        Stage 12 runs after Stage 10, so validated_article should be available.
+        Falls back to other sources if needed.
         """
-        article_data = {}
+        # Primary source: validated_article from Stage 10
+        if hasattr(context, 'validated_article') and context.validated_article:
+            article_data = dict(context.validated_article)
+            # Ensure primary_keyword is set
+            if 'primary_keyword' not in article_data:
+                article_data['primary_keyword'] = context.job_config.get('primary_keyword', '')
+            return article_data
 
-        # Try to extract from different context attributes
+        # Fallback: final_article (if available)
         if hasattr(context, 'final_article') and context.final_article:
-            # If final article is already structured
-            return context.final_article
+            article_data = dict(context.final_article)
+            if 'primary_keyword' not in article_data:
+                article_data['primary_keyword'] = context.job_config.get('primary_keyword', '')
+            return article_data
 
-        # Extract from job_config and generated content
+        # Fallback: Extract from job_config and parallel_results
+        article_data = {}
         job_config = getattr(context, 'job_config', {})
         
         # Primary keyword
         article_data['primary_keyword'] = job_config.get('primary_keyword', '')
         
-        # Try to get headline/title from various sources
-        if hasattr(context, 'metadata') and context.metadata:
-            article_data['Headline'] = context.metadata.get('headline', '')
-            article_data['Meta_Title'] = context.metadata.get('title', '')
-        
-        # Extract content from parallel_results or final_html
+        # Extract content from parallel_results
         if hasattr(context, 'parallel_results') and context.parallel_results:
             pr = context.parallel_results
             

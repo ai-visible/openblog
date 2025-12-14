@@ -1,5 +1,5 @@
 """
-Stage 12: Review/Feedback Iteration
+Stage 13: Review/Feedback Iteration
 
 Conditional stage that applies review feedback to revise content.
 
@@ -33,14 +33,14 @@ logger = logging.getLogger(__name__)
 
 class ReviewIterationStage(Stage):
     """
-    Stage 12: Apply review feedback to revise content.
+    Stage 13: Apply review feedback to revise content.
     
     This stage is CONDITIONAL - it only runs if review_prompts are provided.
     During normal generation, this stage is skipped (no-op).
     During regeneration with feedback, it applies revisions.
     """
 
-    stage_num = 12
+    stage_num = 13
     stage_name = "Review Iteration"
 
     async def execute(self, context: ExecutionContext) -> ExecutionContext:

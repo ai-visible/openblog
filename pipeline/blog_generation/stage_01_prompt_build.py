@@ -71,7 +71,24 @@ class PromptBuildStage(Stage):
             raise ValueError("primary_keyword is required")
 
         # Extract language (optional, default to English)
-        language = context.job_config.get("language", "en")
+        # Priority: job_config.language > company_data.language > "en"
+        language = context.job_config.get("language") or company_data.get("language") or company_data.get("company_language", "en")
+        
+        # Extract word count (optional, dynamic)
+        word_count = context.job_config.get("word_count")
+        
+        # Extract country (optional, for market-specific content)
+        country = context.job_config.get("country")
+        
+        # Extract content generation instruction (optional, custom instructions)
+        content_generation_instruction = context.job_config.get("content_generation_instruction")
+        
+        # Extract tone override (optional, overrides company_context.tone)
+        tone_override = context.job_config.get("tone")
+        
+        # Extract system_prompts (batch-level instructions)
+        # These apply to all articles in a batch and merge with article-level instructions
+        system_prompts = context.job_config.get("system_prompts", [])
 
         # Convert company_data to CompanyContext
         company_data = context.company_data or {}
@@ -90,6 +107,10 @@ class PromptBuildStage(Stage):
 
         logger.debug(f"Keyword: '{primary_keyword}'")
         logger.debug(f"Language: {language}")
+        logger.debug(f"Country: {country or 'Not specified'}")
+        logger.debug(f"Word count: {word_count or 'Default (1,500-2,500)'}")
+        logger.debug(f"Tone override: {tone_override or 'Using company tone'}")
+        logger.debug(f"System prompts (batch-level): {len(system_prompts)} items")
         logger.debug(f"Company: {prompt_context.get('company_name', 'Unknown')}")
         logger.debug(f"Company URL: {prompt_context.get('company_url', 'Not provided')}")
         logger.debug(f"Industry: {prompt_context.get('industry', 'Not specified')}")
@@ -102,7 +123,12 @@ class PromptBuildStage(Stage):
             prompt = build_article_prompt(
                 primary_keyword=primary_keyword,
                 company_context=prompt_context,
-                language=language
+                language=language,
+                word_count=word_count,
+                country=country,
+                content_generation_instruction=content_generation_instruction,
+                tone_override=tone_override,
+                system_prompts=system_prompts
             )
         except Exception as e:
             logger.error(f"Failed to build prompt: {e}")
