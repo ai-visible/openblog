@@ -14,32 +14,38 @@ logger = logging.getLogger(__name__)
 class CompanyContext:
     """
     Simple company context for blog generation.
-    All fields are optional except company_url (required).
+    
+    INPUT: Only company_url is required (mandatory input).
+    OUTPUT: All fields are mandatory in output (always present, even if empty).
+    
+    Field names match opencontext schema for compatibility:
+    - products (not products_services)
+    - tone (not brand_tone)
     """
     
-    # REQUIRED FIELD
-    company_url: str  # Required - Company website URL
+    # REQUIRED INPUT FIELD
+    company_url: str  # Required input - Company website URL
     
-    # OPTIONAL FIELDS - Company Information
+    # OPTIONAL INPUT FIELDS - Company Information (mandatory in output)
     company_name: Optional[str] = None
     industry: Optional[str] = None
     description: Optional[str] = None
     
-    # OPTIONAL FIELDS - Products & Services
-    products_services: Optional[List[str]] = field(default_factory=list)
+    # OPTIONAL INPUT FIELDS - Products & Services (mandatory in output)
+    products: Optional[List[str]] = field(default_factory=list)  # Renamed from products_services
     target_audience: Optional[str] = None
     
-    # OPTIONAL FIELDS - Competitive Context
+    # OPTIONAL INPUT FIELDS - Competitive Context (mandatory in output)
     competitors: Optional[List[str]] = field(default_factory=list)
-    brand_tone: Optional[str] = None
+    tone: Optional[str] = None  # Renamed from brand_tone
     
-    # OPTIONAL FIELDS - Business Context
+    # OPTIONAL INPUT FIELDS - Business Context (mandatory in output)
     pain_points: Optional[List[str]] = field(default_factory=list)
     value_propositions: Optional[List[str]] = field(default_factory=list)
     use_cases: Optional[List[str]] = field(default_factory=list)
     content_themes: Optional[List[str]] = field(default_factory=list)
     
-    # OPTIONAL FIELDS - Content Guidelines
+    # OPTIONAL INPUT FIELDS - Content Guidelines (mandatory in output, openblog-specific)
     system_instructions: Optional[str] = None  # Reusable prompts for all content
     client_knowledge_base: Optional[List[str]] = field(default_factory=list)  # Facts about company
     content_instructions: Optional[str] = None  # Style, format, requirements
@@ -61,65 +67,41 @@ class CompanyContext:
     def to_prompt_context(self) -> Dict[str, Any]:
         """
         Convert company context to prompt variables for content generation.
+        
+        OUTPUT: All fields are mandatory - always present in output (even if empty).
+        This ensures consistent structure matching opencontext schema.
+        
         Returns a dictionary suitable for prompt template injection.
         """
+        # MANDATORY OUTPUT: All fields always present
         context = {
+            # Required input
             "company_url": self.company_url,
+            
+            # Company Information (mandatory output)
             "company_name": self.company_name or "the company",
             "industry": self.industry or "",
             "description": self.description or "",
+            
+            # Products & Services (mandatory output)
+            "products": ", ".join(self.products) if self.products else "",
+            "target_audience": self.target_audience or "",
+            
+            # Competitive Context (mandatory output)
+            "competitors": self.competitors or [],  # List format (matching opencontext string[])
+            "tone": self.tone or "professional",
+            
+            # Business Context (mandatory output)
+            "pain_points": "\n".join([f"- {point}" for point in self.pain_points]) if self.pain_points else "",
+            "value_propositions": "\n".join([f"- {prop}" for prop in self.value_propositions]) if self.value_propositions else "",
+            "use_cases": "\n".join([f"- {case}" for case in self.use_cases]) if self.use_cases else "",
+            "content_themes": ", ".join(self.content_themes) if self.content_themes else "",
+            
+            # Content Guidelines (mandatory output, openblog-specific)
+            "system_instructions": self.system_instructions or "",
+            "client_knowledge_base": "\n".join([f"- {fact}" for fact in self.client_knowledge_base]) if self.client_knowledge_base else "",
+            "content_instructions": self.content_instructions or "",
         }
-        
-        # Add optional fields if provided
-        if self.products_services:
-            context["products_services"] = ", ".join(self.products_services)
-        else:
-            context["products_services"] = ""
-            
-        if self.target_audience:
-            context["target_audience"] = self.target_audience
-        else:
-            context["target_audience"] = ""
-            
-        if self.competitors:
-            context["competitors"] = ", ".join(self.competitors)
-            context["competitors_list"] = self.competitors
-        else:
-            context["competitors"] = ""
-            context["competitors_list"] = []
-            
-        context["brand_tone"] = self.brand_tone or "professional"
-        
-        # Business context
-        if self.pain_points:
-            context["pain_points"] = "\n".join([f"- {point}" for point in self.pain_points])
-        else:
-            context["pain_points"] = ""
-            
-        if self.value_propositions:
-            context["value_propositions"] = "\n".join([f"- {prop}" for prop in self.value_propositions])
-        else:
-            context["value_propositions"] = ""
-            
-        if self.use_cases:
-            context["use_cases"] = "\n".join([f"- {case}" for case in self.use_cases])
-        else:
-            context["use_cases"] = ""
-            
-        if self.content_themes:
-            context["content_themes"] = ", ".join(self.content_themes)
-        else:
-            context["content_themes"] = ""
-            
-        # Content guidelines
-        context["system_instructions"] = self.system_instructions or ""
-        
-        if self.client_knowledge_base:
-            context["client_knowledge_base"] = "\n".join([f"- {fact}" for fact in self.client_knowledge_base])
-        else:
-            context["client_knowledge_base"] = ""
-            
-        context["content_instructions"] = self.content_instructions or ""
         
         return context
     
@@ -127,7 +109,10 @@ class CompanyContext:
     def from_dict(cls, data: Dict[str, Any]) -> 'CompanyContext':
         """
         Create CompanyContext from dictionary.
+        
         Handles both list and string inputs for flexibility.
+        Supports both old field names (products_services, brand_tone) and new names (products, tone)
+        for backward compatibility with opencontext.
         """
         # Helper function to ensure list format
         def ensure_list(value):
@@ -140,15 +125,28 @@ class CompanyContext:
             else:
                 return []
         
+        # Support both old and new field names (backward compatibility)
+        # Old: products_services, brand_tone
+        # New: products, tone (matching opencontext)
+        products = ensure_list(
+            data.get("products", []) or  # New name (opencontext)
+            data.get("products_services", [])  # Old name (backward compat)
+        )
+        
+        tone = (
+            data.get("tone") or  # New name (opencontext)
+            data.get("brand_tone")  # Old name (backward compat)
+        )
+        
         return cls(
             company_url=data.get("company_url", ""),
             company_name=data.get("company_name"),
             industry=data.get("industry"),
             description=data.get("description"),
-            products_services=ensure_list(data.get("products_services", [])),
+            products=products,  # New name
             target_audience=data.get("target_audience"),
             competitors=ensure_list(data.get("competitors", [])),
-            brand_tone=data.get("brand_tone"),
+            tone=tone,  # New name
             pain_points=ensure_list(data.get("pain_points", [])),
             value_propositions=ensure_list(data.get("value_propositions", [])),
             use_cases=ensure_list(data.get("use_cases", [])),
@@ -166,7 +164,7 @@ def create_scaile_example() -> CompanyContext:
         company_name="SCAILE",
         industry="AI Marketing & Answer Engine Optimization (AEO)",
         description="SCAILE provides an AI Visibility Engine designed to help B2B companies and startups appear in AI-generated search results like Google AI Overviews and ChatGPT. By focusing on Answer Engine Optimization (AEO) rather than traditional SEO, they offer a productized, automated solution to turn brands into authoritative sources for high-intent AI queries.",
-        products_services=[
+        products=[  # Renamed from products_services
             "AI Visibility Engine",
             "AEO Foundation (30 articles/mo)",
             "AEO Expansion (50 articles/mo)", 
@@ -180,7 +178,7 @@ def create_scaile_example() -> CompanyContext:
             "iPullRank", "First Page Sage", "AWISEE", "WebFX", 
             "Intero Digital", "Nine Peaks Media"
         ],
-        brand_tone="Professional, results-oriented, innovative, confident, and efficient (emphasizing 'productized' solutions over 'selling hours').",
+        tone="Professional, results-oriented, innovative, confident, and efficient (emphasizing 'productized' solutions over 'selling hours').",  # Renamed from brand_tone
         pain_points=[
             "Invisibility in modern AI search tools like ChatGPT and Google AI Overviews",
             "Declining effectiveness of traditional SEO and manual sales outreach",

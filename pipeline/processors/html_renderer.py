@@ -596,6 +596,7 @@ class HTMLRenderer:
                 content_clean = HTMLRenderer._cleanup_content(content_html)
                 
                 # STEP 3: Link natural language citations (e.g., "According to IBM")
+                # CRITICAL: This must happen BEFORE final cleanup to ensure proper HTML structure
                 source_name_map = article.get("_source_name_map", {})
                 if source_name_map:
                     content_linked = link_natural_citations(
@@ -605,6 +606,12 @@ class HTMLRenderer:
                     )
                 else:
                     content_linked = content_clean
+                
+                # STEP 3.5: Fix citation structure issues created by citation linking
+                # Remove citations wrapped in <p> tags (should be inline)
+                content_linked = re.sub(r'<p>\s*(<a[^>]*class="citation"[^>]*>[^<]+</a>)\s*</p>', r'\1', content_linked)
+                # Merge citations that appear after </p> tags back into paragraphs
+                content_linked = HTMLRenderer._fix_citation_structure(content_linked)
                 
                 # STEP 4: Convert [N] citations to links (fallback for any remaining)
                 citation_map = article.get("_citation_map", {})
@@ -1117,6 +1124,75 @@ class HTMLRenderer:
         # Match [N] where N is one or more digits
         # We'll check inside the replacement function if we're inside an anchor tag
         return re.sub(r'\[(\d+)\]', replace_citation, content)
+
+    @staticmethod
+    def _fix_citation_structure(content: str) -> str:
+        """
+        Fix citation structure issues: citations appearing after </p> tags or wrapped in <p> tags.
+        
+        This ensures citations are properly inline within paragraphs, not breaking HTML structure.
+        This is a structural fix, not regex cleanup - it fixes issues created during citation linking.
+        
+        Args:
+            content: HTML content with potential citation structure issues
+            
+        Returns:
+            Content with fixed citation structure
+        """
+        if not content:
+            return content
+        
+        # Fix 1: Citations appearing after </p> tags
+        # Pattern: </p>SOURCE_NAME reports/notes/predicts...
+        # Find all instances and merge back into previous paragraph
+        def merge_citation_into_paragraph(html_text):
+            # Pattern: </p>SOURCE_NAME (reports|notes|predicts|etc)...
+            pattern = re.compile(
+                r'</p>\s*([A-Z][A-Za-z\s&]+?)\s+(reports?|states?|notes?|predicts?|estimates?|indicates?|found|shows?|reveals?|highlights?|concludes?|demonstrates?|suggests?|warns?|recommends?)\s+(that\s+)?',
+                re.IGNORECASE
+            )
+            
+            matches = list(pattern.finditer(html_text))
+            # Process in reverse to maintain positions
+            for match in reversed(matches):
+                para_end = match.start()
+                citation_text = match.group(1)  # Source name
+                verb = match.group(2)  # reports/notes/etc
+                rest = match.group(3) or ''  # rest of sentence (that, etc)
+                
+                # Find the paragraph this belongs to
+                text_before = html_text[:para_end]
+                para_start = text_before.rfind('<p>')
+                para_close = text_before.rfind('</p>')
+                
+                if para_start != -1 and para_start > para_close:
+                    # Extract paragraph content (without <p> and </p> tags)
+                    para_content = html_text[para_start + 3:para_end]
+                    # Merge citation into paragraph
+                    new_para = f'<p>{para_content} {citation_text} {verb}{rest}'
+                    # Replace the </p>SOURCE pattern with merged content
+                    html_text = html_text[:para_start] + new_para + html_text[match.end():]
+            
+            return html_text
+        
+        content = merge_citation_into_paragraph(content)
+        
+        # Fix 2: Citations wrapped in <p> tags (standalone paragraphs)
+        # Pattern: <p><a class="citation">...</a></p> → <a class="citation">...</a>
+        # Only unwrap if paragraph contains ONLY the citation link
+        def unwrap_citation_paragraph(match):
+            citation_link = match.group(1)
+            # If paragraph contains only whitespace and the citation link, unwrap it
+            # Otherwise, keep as is (might be intentional)
+            return citation_link
+        
+        content = re.sub(
+            r'<p>\s*(<a[^>]*class="citation"[^>]*>[^<]+</a>)\s*</p>',
+            unwrap_citation_paragraph,
+            content
+        )
+        
+        return content
 
     @staticmethod
     def _parse_sources_for_map(sources: str) -> Dict[int, str]:

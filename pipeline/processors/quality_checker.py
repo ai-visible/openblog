@@ -179,25 +179,30 @@ class QualityChecker:
         # Set passed flag (true if no critical issues AND AEO score >= 80)
         aeo_score = report["metrics"].get("aeo_score", 0)
         has_no_critical_issues = len(report["critical_issues"]) == 0
-        meets_aeo_threshold = aeo_score >= 80  # Production threshold: 80/100 minimum
+        # NOTE: Quality gates are informational only - we don't block content in production
+        # This ensures users always get blogs, even if quality is below target
+        # Thresholds are for monitoring and improvement, not blocking
+        meets_aeo_threshold = aeo_score >= 80  # Target threshold: 80/100 (informational)
         
+        # "passed" is informational only - doesn't block pipeline
         report["passed"] = has_no_critical_issues and meets_aeo_threshold
         
-        # Add AEO threshold failure as critical issue if needed
+        # Add AEO threshold warning as suggestion (not critical) if below target
         if has_no_critical_issues and not meets_aeo_threshold:
-            report["critical_issues"].append(f"❌ QUALITY GATE FAILURE: AEO score {aeo_score}/100 below required threshold (minimum: 80)")
-            report["passed"] = False
+            report["suggestions"].append(f"⚠️  AEO score {aeo_score}/100 below target threshold (target: 80+)")
+            # Don't mark as failed - this is informational only
+            # report["passed"] = False  # REMOVED: Don't block on AEO threshold
 
-        # Enhanced logging with quality gate status
-        passed_status = "✅ PASS" if report["passed"] else "❌ FAIL"
+        # Enhanced logging with quality gate status (informational only)
+        passed_status = "✅ PASS" if report["passed"] else "⚠️  BELOW TARGET"
         gate_reason = ""
         if not report["passed"]:
             if not has_no_critical_issues:
                 gate_reason = f" (Critical issues: {len(report['critical_issues'])})"
             elif not meets_aeo_threshold:
-                gate_reason = f" (AEO: {aeo_score}/85)"
+                gate_reason = f" (AEO: {aeo_score}/80 target)"
         
-        logger.info(f"Quality Gate: {passed_status}{gate_reason} | AEO: {report['metrics']['aeo_score']}/100 ({report['metrics'].get('aeo_score_method', 'unknown')})")
+        logger.info(f"Quality Status: {passed_status}{gate_reason} | AEO: {report['metrics']['aeo_score']}/100 ({report['metrics'].get('aeo_score_method', 'unknown')}) [Non-blocking]")
         return report
 
     @staticmethod

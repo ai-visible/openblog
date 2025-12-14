@@ -102,9 +102,9 @@ class AEOScorer:
                 score += 5.0
             
             # Check if contains citation (academic [1] OR natural language)
-            # NOTE: Academic citations are stripped in HTML renderer, so we check the original Direct_Answer field
-            # But for natural citations, we check the stripped text
-            has_academic_citation = re.search(r'\[\d+\]', direct_answer)  # Check original (before HTML renderer strips)
+            # NOTE: We check original Direct_Answer field (academic citations [N] are present here)
+            # The HTML renderer strips [N] citations in final output, but AEO scorer runs before that
+            has_academic_citation = re.search(r'\[\d+\]', direct_answer)  # Check original field
             has_natural_citation = any([
                 re.search(r'according to [A-Z]', direct_answer_text, re.IGNORECASE),
                 re.search(r'[A-Z][a-z]+ (reports?|states?|notes?|found)', direct_answer_text),  # Fixed: removed "that" requirement
@@ -196,10 +196,11 @@ class AEOScorer:
         
         # Check BOTH citation formats
         # 1. Academic: [1], [2], etc.
+        # NOTE: We check original ArticleOutput fields (before HTML renderer strips [N] citations)
+        # The HTML renderer strips [N] citations in final output, but AEO scorer runs before that
         academic_citations = re.findall(r'\[\d+\]', all_content)
         
         # 2. Natural language citations (inline attribution)
-        # NOTE: Academic citations [N] are stripped in HTML renderer, so we only count natural citations here
         # Patterns should match common citation formats without requiring "that"
         natural_citation_patterns = [
             r'according to [A-Z][a-z]+',
@@ -251,7 +252,7 @@ class AEOScorer:
         
         # Citation distribution per-paragraph (5 points)
         # Check both academic AND natural citations per paragraph
-        # NOTE: Academic citations [N] are stripped in HTML renderer, so we only count natural citations here
+        # NOTE: We check original ArticleOutput fields (academic citations [N] are present here)
         paragraphs = re.findall(r'<p[^>]*>.*?</p>', all_content, re.DOTALL)
         if not paragraphs:
             # Fallback: split by double newlines or single newlines if content is plain text
@@ -307,12 +308,13 @@ class AEOScorer:
         content_lower = all_content.lower()
         
         # Conversational phrases (enhanced scoring)
+        # NOTE: Excludes question patterns ("what is", "how does", etc.) - those are scored separately in question_patterns below
         # Extended conversational phrase list (matches injection list)
         conversational_phrases = [
-            "how to", "what is", "why does", "when should", "where can",
+            "how to",  # Keep "how to" (instructional, not a question pattern)
             "you can", "you'll", "you should", "let's", "here's", "this is",
-            "how can", "what are", "how do", "why should", "where are",
             "we'll", "that's", "when you", "if you", "so you can", "which means",
+            "it's", "there's", "here are", "let me", "you might", "you may",
         ]
         phrase_count = sum(1 for phrase in conversational_phrases if phrase in content_lower)
         if phrase_count >= 8:
@@ -332,29 +334,34 @@ class AEOScorer:
         ]
         vague_count = sum(1 for pattern in vague_patterns if re.search(pattern, content_lower))
         
-        # Direct statements (more specific patterns to avoid false positives)
-        # Use word boundaries to avoid matching "is" in "this" or "are" in "care"
+        # Direct statements (action verbs and definitive language)
+        # REMOVED: "is", "are", "does" - too common, cause false positives
+        # Focus on action verbs that indicate direct, confident statements
         direct_patterns = [
-            r"\bis\b",  # Fixed: word boundary
-            r"\bare\b",  # Fixed: word boundary
-            r"\bdoes\b",  # Fixed: word boundary
             r"\bprovides\b",
             r"\benables\b",
             r"\ballows\b",
             r"\bhelps\b",
-            r"\bensures\b",  # Added: more direct action verbs
+            r"\bensures\b",
             r"\bguarantees\b",
             r"\bdelivers\b",
+            r"\boffers\b",
+            r"\bsupports\b",
+            r"\bfacilitates\b",
+            r"\bimplements\b",
+            r"\bcreates\b",
+            r"\bimproves\b",
+            r"\boptimizes\b",
         ]
         direct_count = sum(1 for pattern in direct_patterns if re.search(pattern, content_lower))
         
         # Only score if we have significantly more direct statements than vague ones
-        # This prevents false positives from common words like "is" and "are"
-        if vague_count == 0 and direct_count >= 10:  # No vague language, many direct statements
+        # Threshold increased since we removed common words
+        if vague_count == 0 and direct_count >= 5:  # No vague language, several direct action verbs
             score += 5.0
-        elif direct_count > vague_count * 3:  # Much more direct than vague
+        elif direct_count > vague_count * 3 and direct_count >= 3:  # Much more direct than vague
             score += 5.0
-        elif direct_count > vague_count * 2:  # More direct than vague
+        elif direct_count > vague_count * 2 and direct_count >= 2:  # More direct than vague
             score += 3.0
         elif direct_count > vague_count:  # Somewhat more direct
             score += 1.0

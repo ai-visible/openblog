@@ -1,7 +1,7 @@
 """
 ExecutionContext - Shared data model for all workflow stages.
 
-This is the data structure passed between all 13 stages (0-12) plus conditional Stage 2b.
+This is the data structure passed between all 14 stages (0-13) plus conditional Stage 2b.
 Each stage receives it, modifies it, and passes to the next stage.
 
 Clean design: no side effects, immutable chain of transformations.
@@ -20,7 +20,7 @@ class ExecutionContext:
     """
     Central data model for Python Blog Writing System.
 
-    Flows through all 13 stages (0-12) plus conditional Stage 2b in sequence:
+    Flows through all 14 stages (0-13) plus conditional Stage 2b in sequence:
     Preliminary → fetches and labels: sitemap_pages
     Stage 0 → populates: job_id, job_config, company_data, language
     Stage 1 → adds: prompt
@@ -155,6 +155,30 @@ class ExecutionContext:
     }
     """
 
+    # ========== STAGE 12: Similarity Check ==========
+    similarity_report: Optional[Any] = None
+    """
+    Similarity check report from Stage 12.
+    
+    Contains SimilarityResult object with:
+    - is_too_similar: bool
+    - similarity_score: float (0-100%)
+    - semantic_score: float (0.0-1.0) or None
+    - shingle_score: float (0-100%) or None
+    - similar_article: str (slug of similar article) or None
+    - issues: List[str]
+    - analysis_mode: str ("hybrid", "character", "none")
+    """
+    
+    similarity_recommendations: Optional[Dict[str, Any]] = None
+    """Recommendations from similarity check (action, severity, suggestions)"""
+    
+    batch_stats: Optional[Dict[str, Any]] = None
+    """Batch similarity statistics (articles_count, embedding_stats, etc)"""
+    
+    regeneration_needed: bool = False
+    """Flag indicating if regeneration is needed due to high similarity"""
+
     # ========== STAGE 10-11: ArticleOutput ==========
     article_output: Optional[Any] = None
     """
@@ -206,7 +230,7 @@ class ExecutionContext:
         Get input data for a specific stage.
 
         Args:
-            stage_num: Stage number (0-11)
+            stage_num: Stage number (0-13)
 
         Returns:
             Dictionary of inputs required by that stage
@@ -266,6 +290,15 @@ class ExecutionContext:
                 "company_data": self.company_data,
                 "language": self.language,
             },
+            12: {
+                "validated_article": self.validated_article,
+                "job_config": self.job_config,
+                "job_id": self.job_id,
+            },
+            13: {
+                "validated_article": self.validated_article,
+                "job_config": self.job_config,
+            },
         }
         return stage_inputs.get(stage_num, {})
 
@@ -279,19 +312,42 @@ class ExecutionContext:
         """
         self.execution_times[stage_name] = duration
 
-    def add_error(self, stage_name: str, error: Exception) -> None:
+    def add_error(self, stage_name: str, error: Exception, context: Optional[Dict[str, Any]] = None) -> None:
         """
-        Record an error encountered in a stage.
+        Record an error encountered in a stage with enhanced context.
 
         Args:
             stage_name: Name of stage (e.g., 'stage_02')
             error: Exception object or error details
+            context: Additional context (job_id, stage_num, etc.)
         """
-        self.errors[stage_name] = {
+        error_data = {
             "type": type(error).__name__,
             "message": str(error),
             "timestamp": datetime.now().isoformat(),
         }
+        
+        # Add error class module if available
+        if hasattr(error, '__class__') and hasattr(error.__class__, '__module__'):
+            error_data["module"] = error.__class__.__module__
+        
+        # Add traceback summary if available
+        if hasattr(error, '__traceback__') and error.__traceback__:
+            import traceback
+            tb_lines = traceback.format_tb(error.__traceback__)
+            if tb_lines:
+                # Store last few lines of traceback
+                error_data["traceback_summary"] = "".join(tb_lines[-3:])
+        
+        # Add additional context
+        if context:
+            error_data["context"] = context
+        
+        # Add stage number if available
+        if hasattr(self, 'job_config') and 'primary_keyword' in self.job_config:
+            error_data["job_keyword"] = self.job_config.get('primary_keyword', '')
+        
+        self.errors[stage_name] = error_data
 
     def get_total_execution_time(self) -> float:
         """

@@ -37,7 +37,7 @@ for asset in response.assets:
 company_data = {
     "company_name": "TechSecure Inc",
     "industry": "Technology",
-    "brand_tone": "modern professional",
+    "tone": "modern professional",  # Renamed from brand_tone to match opencontext
     "project_folder_id": "your-google-drive-folder-id"  # Optional
 }
 
@@ -86,7 +86,7 @@ This will test:
 The agent automatically extracts design system information from company data:
 
 - **Colors**: Based on industry (e.g., Technology → Blue tones)
-- **Style**: Based on brand_tone (e.g., "modern professional" → Modern minimalist)
+- **Style**: Based on tone (e.g., "modern professional" → Modern minimalist)
 - **Industry Context**: Used to inform image style
 
 ## Integration with Pipeline

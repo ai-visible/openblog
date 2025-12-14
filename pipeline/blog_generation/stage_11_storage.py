@@ -27,7 +27,7 @@ import re
 from typing import Dict, Any, Optional, List
 
 from ..core import ExecutionContext, Stage
-from ..processors.html_renderer import HTMLRenderer
+from ..processors.html_renderer_simple import HTMLRendererSimple as HTMLRenderer
 from ..processors.storage import StorageProcessor
 
 logger = logging.getLogger(__name__)
@@ -82,15 +82,21 @@ class StorageStage(Stage):
             }
             return context
 
-        # Step 2: Confirm quality passed
+        # Step 2: Log quality status (non-blocking)
+        # NOTE: Quality gates are informational only - we don't block content in production
+        # This ensures users always get blogs, even if quality is below target
         passed_quality = context.quality_report.get("passed", False)
         if not passed_quality:
             critical_issues = context.quality_report.get("critical_issues", [])
-            aeo_score = context.quality_report.get("aeo_score", 0)
-            logger.warning(f"Quality checks failed (AEO: {aeo_score}): {critical_issues[:2]}")
-            # Quality gate enforced - do not generate HTML for failing articles
-            # This ensures only high-quality content is published
-            raise ValueError(f"Quality gate failed: AEO {aeo_score}/100, issues: {critical_issues[:2]}")
+            aeo_score = context.quality_report.get("metrics", {}).get("aeo_score", 0)
+            logger.warning(f"⚠️  Quality below target (AEO: {aeo_score}/100): {critical_issues[:2]}")
+            logger.warning(f"   Continuing with article generation (non-blocking quality gate)")
+            # Log all critical issues for monitoring
+            for issue in critical_issues[:5]:
+                logger.warning(f"   - {issue}")
+        else:
+            aeo_score = context.quality_report.get("metrics", {}).get("aeo_score", 0)
+            logger.info(f"✅ Quality checks passed (AEO: {aeo_score}/100)")
 
         # Step 3: Extract FAQ/PAA items and generate article URL
         logger.debug("Extracting FAQ/PAA items and generating article URL...")

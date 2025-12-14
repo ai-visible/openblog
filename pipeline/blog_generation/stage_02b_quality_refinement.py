@@ -22,6 +22,7 @@ Only executes if quality issues are detected.
 
 import logging
 import re
+import asyncio
 from typing import Dict, List, Any, Optional
 
 from ..core import ExecutionContext, Stage
@@ -178,10 +179,11 @@ class QualityRefinementStage(Stage):
             return context
         
         # ============================================================
-        # STEP 1: REGEX CLEANUP (deterministic, fast)
+        # STEP 1: SKIP REGEX CLEANUP - AI-only approach
         # ============================================================
-        logger.info("🔧 Step 1: Applying regex cleanup...")
-        context = self._apply_regex_cleanup(context)
+        # All fixes should come from improved prompts in Stage 2 and Stage 2b
+        # No regex cleanup - trust AI to generate correct content
+        logger.info("🔧 Step 1: Skipping regex cleanup (AI-only approach)")
         
         # ============================================================
         # STEP 2: GEMINI REVIEW (MANDATORY - always runs)
@@ -211,7 +213,10 @@ class QualityRefinementStage(Stage):
         
         return context
         
-    def _apply_regex_cleanup(self, context: ExecutionContext) -> ExecutionContext:
+    # REMOVED: _apply_regex_cleanup - NO REGEX, NO STRING MANIPULATION
+    # All fixes must be done by AI (Gemini) in _gemini_full_review
+    
+    def _apply_regex_cleanup_REMOVED(self, context: ExecutionContext) -> ExecutionContext:
         """
         Apply deterministic regex fixes to all content fields.
         
@@ -393,21 +398,24 @@ Be SURGICAL - only change what's broken, preserve everything else.
 □ Orphaned HTML tags (</p>, </li>, </ul> in wrong places)
 □ Malformed HTML nesting (<ul> inside <p>, </p> inside <li>)
 □ Empty or near-empty paragraphs (<p>This </p>, <p>. Also,</p>)
-□ Broken sentences split across multiple <p> tags
+□ Broken sentences split across multiple <p> tags - CRITICAL: Fix sentences like "</p><p><strong>How can</strong> you..." by merging into single paragraph
 □ Lists where most items lack proper sentence structure
+□ Paragraphs with orphaned <strong> tags: "<p><strong>If you</strong></p> want..." → merge into "<p><strong>If you</strong> want...</p>"
+□ Sentences incorrectly split: "</p><p><strong>you'll</strong></p> need..." → merge into single paragraph
 
 === CAPITALIZATION ISSUES ===
 □ Wrong capitalization of brands: "iBM" → "IBM", "nIST" → "NIST", "mCKinsey" → "McKinsey"
 □ Lowercase after period: "sentence. the next" → "sentence. The next"
 □ All-caps words that shouldn't be: "THE BEST" → "the best"
 
-=== AI MARKER ISSUES ===
-□ Em dashes (—) → replace with " - " or comma
-□ En dashes (–) → replace with "-"
-□ Academic citations [N], [1][2] → remove entirely
-□ Robotic phrases: "delve into", "crucial to note", "it's important to understand"
-□ "Here's how/what" introductions → rewrite naturally
-□ "Key points include:" followed by redundant list
+=== AI MARKER ISSUES (CRITICAL - ZERO TOLERANCE) ===
+□ Em dashes (—) → MUST replace with " - " (space-hyphen-space) or comma - NEVER leave em dashes
+□ En dashes (–) → MUST replace with "-" (hyphen) or " to " - NEVER leave en dashes
+□ Academic citations [N], [1][2] → remove entirely from body (keep natural language citations only)
+□ Robotic phrases: "delve into", "crucial to note", "it's important to understand" → rewrite naturally
+□ "Here's how/what" introductions → rewrite naturally without formulaic transitions
+□ "Key points include:" followed by redundant list → remove the redundant list, keep paragraph
+□ Section titles with <p> tags → remove all HTML tags from titles
 
 === CONTENT QUALITY ISSUES ===
 □ Incomplete sentences ending abruptly without punctuation
@@ -473,10 +481,12 @@ Be thorough. Production quality means ZERO defects AND AEO score 95+.
         from ..models.gemini_client import GeminiClient
         gemini_client = GeminiClient()
         
-        for field in content_fields:
+        # PARALLELIZE: Create tasks for all fields to review concurrently
+        async def review_field(field: str) -> tuple[str, int, str]:
+            """Review a single field and return (field_name, issues_fixed, fixed_content)."""
             content = article_dict.get(field)
             if not content or not isinstance(content, str) or len(content) < 100:
-                continue
+                return (field, 0, content or "")
             
             prompt = f"""{CHECKLIST}
 
@@ -507,17 +517,44 @@ If no issues, return original content unchanged with issues_fixed=0.
                     try:
                         result = json.loads(json_str)
                         issues_fixed = result.get('issues_fixed', 0)
-                        
-                        if issues_fixed > 0:
-                            article_dict[field] = result.get('fixed_content', content)
-                            total_fixes += issues_fixed
-                            logger.info(f"   ✅ {field}: {issues_fixed} issues fixed")
+                        fixed_content = result.get('fixed_content', content)
+                        return (field, issues_fixed, fixed_content)
                     except json.JSONDecodeError:
-                        # If not valid JSON, skip this field
                         logger.debug(f"   ⚠️ {field}: Could not parse Gemini response")
+                        return (field, 0, content)
                         
             except Exception as e:
-                logger.debug(f"   ⚠️ {field}: Gemini review failed - {e}")
+                logger.debug(f"   ⚠️ {field}: Review failed - {e}")
+                return (field, 0, content)
+            
+            return (field, 0, content)
+        
+        # Execute all reviews in parallel (with rate limiting via semaphore)
+        # Limit concurrent calls to avoid API rate limits (max 10 concurrent)
+        semaphore = asyncio.Semaphore(10)
+        
+        async def review_field_with_limit(field: str):
+            async with semaphore:
+                return await review_field(field)
+        
+        logger.info(f"   🔄 Reviewing {len(content_fields)} fields in parallel (max 10 concurrent)...")
+        tasks = [review_field_with_limit(field) for field in content_fields]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
+        for result in results:
+            if isinstance(result, Exception):
+                logger.debug(f"   ⚠️ Field review exception: {result}")
+                continue
+            
+            field, issues_fixed, fixed_content = result
+            if issues_fixed > 0:
+                article_dict[field] = fixed_content
+                total_fixes += issues_fixed
+                logger.info(f"   ✅ {field}: {issues_fixed} issues fixed")
+            else:
+                # No issues fixed, but review completed
+                pass
                 # Continue with other fields
         
         if total_fixes > 0:
@@ -704,9 +741,12 @@ Return the optimized article content. Be surgical - only add what's missing, don
         sections_to_optimize.sort(key=lambda x: (x[3] == 0, x[4] == 0, x[5] == 0), reverse=True)  # Prioritize sections missing components
         sections_to_optimize = sections_to_optimize[:7]  # Increased from 5 to 7 sections
         
-        for i, field, content, section_citations, section_phrases, section_questions in sections_to_optimize:
-            try:
-                section_prompt = f"""{aeo_prompt}
+        # PARALLELIZE: Optimize all sections concurrently
+        async def optimize_section(section_data: tuple) -> tuple[str, str, bool]:
+            """Optimize a single section and return (field_name, optimized_content, success)."""
+            i, field, content, section_citations, section_phrases, section_questions = section_data
+            
+            section_prompt = f"""{aeo_prompt}
 
 SECTION TO OPTIMIZE:
 {content}
@@ -714,17 +754,48 @@ SECTION TO OPTIMIZE:
 Return ONLY the optimized section content with added citations, conversational phrases, and question patterns.
 Be GENEROUS - add 2-3 citations, 2-3 conversational phrases, and 1-2 question patterns naturally.
 """
+            try:
                 response = await gemini_client.generate_content(
                     prompt=section_prompt,
                     response_schema=None  # Free-form response
                 )
                 
                 if response and len(response) > 100:
-                    article_dict[field] = response.strip()
-                    optimized_count += 1
-                    logger.info(f"   ✅ Optimized {field} (had {section_citations} citations, {section_phrases} phrases)")
+                    return (field, response.strip(), True)
+                else:
+                    return (field, content, False)
             except Exception as e:
                 logger.debug(f"   ⚠️ {field}: AEO optimization failed - {e}")
+                return (field, content, False)
+        
+        # Execute all optimizations in parallel (with rate limiting via semaphore)
+        # Limit concurrent calls to avoid API rate limits (max 7 concurrent)
+        if sections_to_optimize:
+            semaphore = asyncio.Semaphore(7)
+            
+            async def optimize_section_with_limit(section_data: tuple):
+                async with semaphore:
+                    return await optimize_section(section_data)
+            
+            logger.info(f"   🔄 Optimizing {len(sections_to_optimize)} sections in parallel (max 7 concurrent)...")
+            tasks = [optimize_section_with_limit(section_data) for section_data in sections_to_optimize]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process results
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.debug(f"   ⚠️ Section optimization exception: {result}")
+                    continue
+                
+                field, optimized_content, success = result
+                if success:
+                    article_dict[field] = optimized_content
+                    optimized_count += 1
+                    # Get original stats for logging
+                    original_section = next((s for s in sections_to_optimize if s[1] == field), None)
+                    if original_section:
+                        _, _, _, section_citations, section_phrases, _ = original_section
+                        logger.info(f"   ✅ Optimized {field} (had {section_citations} citations, {section_phrases} phrases)")
         
         # Verify question patterns were added (post-optimization check)
         all_content_after = article_dict.get('Intro', '') + ' ' + article_dict.get('Direct_Answer', '')

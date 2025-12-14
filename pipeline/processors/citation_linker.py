@@ -276,6 +276,9 @@ class CitationLinker:
         """
         Convert natural language citations to hyperlinks.
         
+        Properly handles HTML structure - only links citations that are inside paragraphs,
+        not those appearing after closing tags.
+        
         Args:
             content: HTML content with natural language citations
             
@@ -297,6 +300,32 @@ class CitationLinker:
             matches = list(re.finditer(pattern_def.pattern, content))
             
             for match in reversed(matches):
+                # CRITICAL: Check if citation is inside a paragraph, not after closing tag
+                match_start = match.start()
+                match_end = match.end()
+                
+                # Find the paragraph context around this match
+                # Look backwards for opening <p> tag
+                text_before = content[:match_start]
+                last_p_open = text_before.rfind('<p>')
+                last_p_close = text_before.rfind('</p>')
+                
+                # If </p> appears after last <p>, we're outside a paragraph - skip
+                if last_p_close > last_p_open:
+                    logger.debug(f"Skipping citation match outside paragraph: {match.group(0)[:50]}")
+                    continue
+                
+                # If no <p> tag found before, check if we're in a paragraph
+                # (might be at start of content or in a different context)
+                if last_p_open == -1:
+                    # Check if we're after a closing tag (</p>, </h2>, etc.)
+                    if last_p_close != -1 or text_before.rstrip().endswith('>'):
+                        # We're likely outside a paragraph - be cautious
+                        # Only proceed if there's an opening tag nearby
+                        if not any(tag in text_before[-100:] for tag in ['<p>', '<div>', '<section>', '<article>']):
+                            logger.debug(f"Skipping citation match - no paragraph context: {match.group(0)[:50]}")
+                            continue
+                
                 source_name = match.group(pattern_def.source_group).strip()
                 url = self._find_matching_url(source_name)
                 
@@ -307,10 +336,25 @@ class CitationLinker:
                 if current_count >= self.max_links_per_source:
                     continue
                 
-                # Build replacement
+                # Build replacement - ensure citation stays inline
                 full_match = match.group(0)
                 linked_source = f'<a href="{url}" target="_blank" rel="noopener noreferrer" class="citation">{source_name}</a>'
                 replacement = full_match.replace(source_name, linked_source, 1)
+                
+                # CRITICAL: Ensure replacement doesn't break paragraph structure
+                # If replacement would create <p><a>...</a></p>, merge it properly
+                if text_before.rstrip().endswith('</p>') and replacement.strip().startswith('<a'):
+                    # Citation after </p> - merge into previous paragraph
+                    para_end = text_before.rfind('</p>')
+                    para_start = text_before.rfind('<p>', 0, para_end)
+                    if para_start != -1:
+                        para_content = content[para_start + 3:para_end]
+                        # Merge citation into paragraph
+                        new_para = f'<p>{para_content} {replacement}</p>'
+                        content = content[:para_start] + new_para + content[match_end:]
+                        self.link_counts[url] = current_count + 1
+                        linked_count += 1
+                        continue
                 
                 content = content[:match.start()] + replacement + content[match.end():]
                 self.link_counts[url] = current_count + 1
@@ -458,6 +502,9 @@ def convert_strong_tags_to_links(content: str, citation_map: Dict[str, str]) -> 
     Gemini often outputs: "According to the <strong>IBM Cost of Data Breach Report</strong>"
     This converts to: "According to the <a href="...">IBM Cost of Data Breach Report</a>"
     
+    CRITICAL: Only converts <strong> tags that are inside paragraphs, not standalone.
+    Prevents creating <p><a>...</a></p> structures.
+    
     Args:
         content: HTML content with <strong> tags
         citation_map: Dict mapping source names to URLs
@@ -486,6 +533,25 @@ def convert_strong_tags_to_links(content: str, citation_map: Dict[str, str]) -> 
         def replace_strong_with_link(match):
             nonlocal links_added
             full_text = match.group(1)
+            match_start = match.start()
+            
+            # CRITICAL: Check HTML structure - only convert if inside paragraph
+            text_before = content[:match_start]
+            last_p_open = text_before.rfind('<p>')
+            last_p_close = text_before.rfind('</p>')
+            
+            # If </p> appears after last <p>, we're outside a paragraph
+            if last_p_close > last_p_open:
+                # Check if this <strong> is wrapped in its own <p> tag
+                # Pattern: <p><strong>SOURCE</strong></p> - this is wrong, should be inline
+                text_after = content[match.end():]
+                if text_before.rstrip().endswith('<p>') and text_after.lstrip().startswith('</p>'):
+                    # This is <p><strong>SOURCE</strong></p> - unwrap the paragraph
+                    # We'll handle this by returning just the link, caller will fix structure
+                    pass
+                else:
+                    # Outside paragraph context - skip
+                    return match.group(0)
             
             # Check if we've already linked this source enough times
             if source_link_counts.get(source_name, 0) >= 2:
@@ -494,10 +560,22 @@ def convert_strong_tags_to_links(content: str, citation_map: Dict[str, str]) -> 
             source_link_counts[source_name] = source_link_counts.get(source_name, 0) + 1
             links_added += 1
             
-            # Replace with link
-            return f'<a href="{url}" target="_blank" rel="noopener noreferrer" class="citation">{full_text}</a>'
+            # Replace with link - ensure it stays inline
+            link_tag = f'<a href="{url}" target="_blank" rel="noopener noreferrer" class="citation">{full_text}</a>'
+            
+            # CRITICAL: If this is wrapped in <p><strong>...</strong></p>, unwrap it
+            if text_before.rstrip().endswith('<p>') and content[match.end():].lstrip().startswith('</p>'):
+                # Return just the link - the paragraph wrapper will be removed by caller
+                return link_tag
+            
+            return link_tag
         
         content = re.sub(pattern, replace_strong_with_link, content, flags=re.IGNORECASE)
+        
+        # POST-PROCESS: Remove <p> wrappers around citations that were just converted
+        # Pattern: <p><a class="citation">...</a></p> → <a class="citation">...</a>
+        # But only if it's standalone (not part of larger paragraph content)
+        content = re.sub(r'<p>\s*(<a[^>]*class="citation"[^>]*>[^<]+</a>)\s*</p>', r'\1', content)
     
     if links_added > 0:
         logger.info(f"📎 Converted {links_added} <strong> tags to citation links")

@@ -84,144 +84,146 @@ class CitationsStage(Stage):
         Returns:
             Updated context with parallel_results populated
         """
-        logger.info(f"Stage 4: {self.stage_name}")
+        try:
+            logger.info(f"Stage 4: {self.stage_name}")
 
-        # Check if citations are disabled
-        if context.job_config.get("citations_disabled", False):
-            logger.info("Citations disabled via job_config")
-            context.parallel_results["citations_html"] = ""
-            return context
+            # Check if citations are disabled (defensive null check)
+            job_config = context.job_config if context.job_config else {}
+            if job_config.get("citations_disabled", False):
+                logger.info("Citations disabled via job_config")
+                context.parallel_results["citations_html"] = ""
+                return context
 
-        # Validate input
-        if not context.structured_data:
-            logger.warning("No structured_data available for citations")
-            context.parallel_results["citations_html"] = ""
-            return context
+            # Validate input
+            if not context.structured_data:
+                logger.warning("No structured_data available for citations")
+                context.parallel_results["citations_html"] = ""
+                return context
 
-        sources_text = context.structured_data.Sources or ""
-        if not sources_text.strip():
-            logger.warning("No sources found in structured_data")
-            context.parallel_results["citations_html"] = ""
-            return context
+            sources_text = context.structured_data.Sources or ""
+            if not sources_text.strip():
+                logger.warning("No sources found in structured_data")
+                context.parallel_results["citations_html"] = ""
+                return context
 
-        logger.info(f"Processing sources ({len(sources_text)} chars)...")
+            logger.info(f"Processing sources ({len(sources_text)} chars)...")
 
-        # Parse citations
-        citation_list = self._parse_sources(sources_text)
+            # Get grounding URLs BEFORE parsing (AI will use them during parsing)
+            grounding_urls = getattr(context, 'grounding_urls', [])
+            if grounding_urls:
+                logger.info(f"📎 AI will use {len(grounding_urls)} grounding URLs during citation parsing")
 
-        if not citation_list.citations:
-            logger.warning("No valid citations extracted")
-            context.parallel_results["citations_html"] = ""
-            return context
+            # Parse citations using AI (no regex/string manipulation)
+            # AI receives grounding URLs to enhance citations with specific URLs
+            citation_list = await self._parse_sources(sources_text, grounding_urls=grounding_urls)
 
-        logger.info(f"✅ Extracted {citation_list.count()} citations")
-        for citation in citation_list.citations:
-            logger.debug(f"   [{citation.number}]: {citation.url}")
+            if not citation_list.citations:
+                logger.warning("No valid citations extracted")
+                context.parallel_results["citations_html"] = ""
+                return context
 
-        # CRITICAL: Enhance citations with SPECIFIC URLs from Gemini's grounding
-        # The Sources field often has generic URLs (gartner.com/newsroom) but 
-        # grounding_urls contains the ACTUAL source URLs from Google Search
-        grounding_urls = getattr(context, 'grounding_urls', [])
-        if grounding_urls:
-            logger.info(f"📎 Enhancing {citation_list.count()} citations with {len(grounding_urls)} grounding URLs")
-            citation_list = self._enhance_with_grounding_urls(citation_list, grounding_urls)
-        else:
-            logger.warning("⚠️  No grounding URLs available to enhance citations")
+            logger.info(f"✅ Extracted {citation_list.count()} citations")
+            for citation in citation_list.citations:
+                logger.debug(f"   [{citation.number}]: {citation.url}")
 
-        # CRITICAL FIX: Preserve original URLs before validation
-        # This allows fallback to original URLs if validation replaces them incorrectly
-        original_urls = {}
-        for citation in citation_list.citations:
-            original_urls[citation.number] = citation.url
-        logger.debug(f"Preserved {len(original_urls)} original URLs before validation")
+            # Additional enhancement pass (AI may have already used grounding URLs, but this ensures all are enhanced)
+            if grounding_urls:
+                logger.info(f"📎 Final enhancement pass: {citation_list.count()} citations with {len(grounding_urls)} grounding URLs")
+                citation_list = self._enhance_with_grounding_urls(citation_list, grounding_urls)
+            else:
+                logger.warning("⚠️  No grounding URLs available to enhance citations")
 
-        # ULTIMATE VALIDATION: Use enhanced citation validator
-        if self.config.enable_citation_validation and context.company_data and context.company_data.get("company_url"):
-            logger.info("🔍 Starting ultimate citation validation...")
-            logger.info(f"    enable_citation_validation = {self.config.enable_citation_validation}")
-            company_url_val = context.company_data.get('company_url') if context.company_data else ""
-            logger.info(f"    company_url = {company_url_val}")
-            logger.info(f"    Gemini client will be initialized for citation validation")
-            validated_list = await self._validate_citations_ultimate(
-                citation_list, context
-            )
+            # CRITICAL FIX: Preserve original URLs before validation
+            # This allows fallback to original URLs if validation replaces them incorrectly
+            original_urls = {}
+            for citation in citation_list.citations:
+                original_urls[citation.number] = citation.url
+            logger.debug(f"Preserved {len(original_urls)} original URLs before validation")
+
+            # ULTIMATE VALIDATION: Use enhanced citation validator
+            if self.config.enable_citation_validation and context.company_data and context.company_data.get("company_url"):
+                logger.info("🔍 Starting ultimate citation validation...")
+                logger.info(f"    enable_citation_validation = {self.config.enable_citation_validation}")
+                company_url_val = context.company_data.get('company_url') if context.company_data else ""
+                logger.info(f"    company_url = {company_url_val}")
+                logger.info(f"    Gemini client will be initialized for citation validation")
+                validated_list = await self._validate_citations_ultimate(
+                    citation_list, context
+                )
+                
+                # CRITICAL FIX: Check if validation replaced URLs with wrong fallbacks
+                for citation in validated_list.citations:
+                    original_url = original_urls.get(citation.number)
+                    if original_url and original_url != citation.url:
+                        is_generic_fallback = any(domain in citation.url.lower() for domain in [
+                            'pewresearch.org', 'nist.gov', 'census.gov', 'statista.com'
+                        ])
+                        
+                        if context.company_data:
+                            company_domain = context.company_data.get("company_url", "").replace("https://", "").replace("http://", "").split("/")[0]
+                            is_company_url = company_domain and company_domain in original_url.lower()
+                        else:
+                            is_company_url = False
+                        
+                        if is_generic_fallback:
+                            logger.warning(f"⚠️  Citation [{citation.number}] was replaced with generic fallback")
+                            logger.warning(f"    Original: {original_url}")
+                            logger.warning(f"    Replaced: {citation.url}")
+                        elif is_company_url:
+                            logger.warning(f"   ⚠️  Company URL was replaced - original was invalid (404)")
+                            logger.warning(f"   ❌ NOT restoring invalid company URL: {original_url}")
+                
+                citation_list = validated_list
+            elif self.config.enable_citation_validation:
+                logger.info("Citation URL validation skipped (no company_url)")
+            else:
+                logger.info("Citation URL validation disabled")
+
+            # Format as HTML
+            citations_html = citation_list.to_html_paragraph_list()
+            logger.info(f"   HTML size: {len(citations_html)} chars")
             
-            # CRITICAL FIX: Check if validation replaced URLs with wrong fallbacks
-            # If a URL was replaced with a generic authority site (pewresearch.org, nist.gov),
-            # restore the original URL ONLY if it was valid (200 OK)
-            # DO NOT restore invalid (404) company URLs - they must be rejected
-            for citation in validated_list.citations:
-                original_url = original_urls.get(citation.number)
-                if original_url and original_url != citation.url:
-                    # Check if replacement is a generic fallback
-                    is_generic_fallback = any(domain in citation.url.lower() for domain in [
-                        'pewresearch.org', 'nist.gov', 'census.gov', 'statista.com'
-                    ])
-                    
-                    # Check if original URL is from company domain
-                    if context.company_data:
-                        company_domain = context.company_data.get("company_url", "").replace("https://", "").replace("http://", "").split("/")[0]
-                        is_company_url = company_domain and company_domain in original_url.lower()
-                    else:
-                        is_company_url = False
-                    
-                    # CRITICAL: Only restore if:
-                    # 1. It's a generic fallback (bad replacement), OR
-                    # 2. It's a company URL that was valid (200 OK) - we need to verify this
-                    if is_generic_fallback:
-                        # Always restore if replaced with generic fallback (even if original was invalid)
-                        # But we should verify the original was valid first
-                        logger.warning(f"⚠️  Citation [{citation.number}] was replaced with generic fallback")
-                        logger.warning(f"    Original: {original_url}")
-                        logger.warning(f"    Replaced: {citation.url}")
-                        logger.warning(f"    Note: Will only restore if original URL is valid (200 OK)")
-                        # Don't restore yet - need to validate original first
-                    elif is_company_url:
-                        # Company URL - only restore if it was valid (not 404)
-                        # We can't restore invalid company URLs (404s) - they must be rejected
-                        logger.info(f"   Citation [{citation.number}] is company URL - checking if original was valid...")
-                        # The validator already checked this, so if citation.url != original_url,
-                        # it means original was invalid (404) and was replaced or citation was filtered
-                        # So we should NOT restore it
-                        logger.warning(f"   ⚠️  Company URL was replaced - this means original was invalid (404)")
-                        logger.warning(f"   ❌ NOT restoring invalid company URL: {original_url}")
-                        # Keep the replacement (or it will be filtered out if no replacement found)
+            # Build validated citation map for in-body links
+            validated_citation_map = {}
+            validated_source_name_map = {}
+            for citation in citation_list.citations:
+                validated_citation_map[citation.number] = citation.url
+                title_words = citation.title.split() if citation.title else []
+                if title_words:
+                    source_name = title_words[0]
+                    validated_source_name_map[source_name.lower()] = citation.url
             
-            citation_list = validated_list
-        elif self.config.enable_citation_validation:
-            logger.info("Citation URL validation skipped (no company_url)")
-        else:
-            logger.info("Citation URL validation disabled")
+            logger.info(f"   Validated citation map: {len(validated_citation_map)} entries")
+            logger.info(f"   Validated source names: {list(validated_source_name_map.keys())}")
 
-        # Format as HTML
-        citations_html = citation_list.to_html_paragraph_list()
-        logger.info(f"   HTML size: {len(citations_html)} chars")
+            # Store in context
+            context.parallel_results["citations_html"] = citations_html
+            context.parallel_results["citations_count"] = citation_list.count()
+            context.parallel_results["citations_list"] = citation_list
+            context.parallel_results["validated_citation_map"] = validated_citation_map
+            context.parallel_results["validated_source_name_map"] = validated_source_name_map
+
+            return context
         
-        # Build validated citation map for in-body links
-        # This ensures ONLY validated URLs are used for natural language linking
-        validated_citation_map = {}
-        validated_source_name_map = {}
-        for citation in citation_list.citations:
-            # Map by citation number: {1: "https://...", 2: "https://..."}
-            validated_citation_map[citation.number] = citation.url
-            # Extract source name from title for natural language linking
-            # Title format: "Gartner Top Trends 2025" -> source_name = "Gartner"
-            title_words = citation.title.split() if citation.title else []
-            if title_words:
-                source_name = title_words[0]  # First word is usually the source name
-                validated_source_name_map[source_name.lower()] = citation.url
-        
-        logger.info(f"   Validated citation map: {len(validated_citation_map)} entries")
-        logger.info(f"   Validated source names: {list(validated_source_name_map.keys())}")
-
-        # Store in context
-        context.parallel_results["citations_html"] = citations_html
-        context.parallel_results["citations_count"] = citation_list.count()
-        context.parallel_results["citations_list"] = citation_list
-        context.parallel_results["validated_citation_map"] = validated_citation_map
-        context.parallel_results["validated_source_name_map"] = validated_source_name_map
-
-        return context
+        except AttributeError as e:
+            if "'NoneType' object has no attribute 'get'" in str(e):
+                logger.error(f"❌ Stage 4 AttributeError: {e}")
+                logger.error("   This usually means company_data, sitemap_data, or job_config is None")
+                logger.error(f"   company_data: {context.company_data is not None if hasattr(context, 'company_data') else 'N/A'}")
+                logger.error(f"   sitemap_data: {getattr(context, 'sitemap_data', None) is not None}")
+                logger.error(f"   job_config: {context.job_config is not None if hasattr(context, 'job_config') else 'N/A'}")
+                # Return empty citations HTML to allow pipeline to continue
+                context.parallel_results["citations_html"] = ""
+                context.parallel_results["citations_count"] = 0
+                return context
+            else:
+                raise
+        except Exception as e:
+            logger.error(f"❌ Stage 4 unexpected error: {e}", exc_info=True)
+            # Return empty citations HTML to allow pipeline to continue
+            context.parallel_results["citations_html"] = ""
+            context.parallel_results["citations_count"] = 0
+            return context
 
     async def _validate_citation_urls(
         self,
@@ -452,100 +454,105 @@ class CitationsStage(Stage):
         
         return best_match
 
-    def _parse_sources(self, sources_text: str) -> CitationList:
+    async def _parse_sources(self, sources_text: str, grounding_urls: List[Dict[str, str]] = None) -> CitationList:
         """
-        Parse sources text into Citation objects.
-
-        Handles formats:
-        - [1]: https://example.com – Description
-        - [2]: https://example.org – Another description
-        - etc.
+        Parse sources text into Citation objects using AI (Gemini).
+        
+        NO REGEX, NO STRING MANIPULATION - AI-only parsing.
+        
+        Uses Gemini grounding URLs to enhance citations with specific source URLs.
 
         Args:
             sources_text: Raw sources from structured_data
+            grounding_urls: Optional list of grounding URLs from Gemini search
 
         Returns:
             CitationList with extracted citations
         """
         citation_list = CitationList()
-
-        # CRITICAL FIX: Clean escaped HTML from sources BEFORE parsing
-        # Gemini sometimes outputs &lt;/p&gt; and other HTML entities in source text
-        sources_text = sources_text.replace('&lt;', '<').replace('&gt;', '>')
-        sources_text = sources_text.replace('</p>', '').replace('<p>', '')
-        sources_text = sources_text.replace('&amp;', '&')
-        sources_text = sources_text.replace('&nbsp;', ' ')
-        # Remove any remaining HTML tags
-        sources_text = re.sub(r'<[^>]+>', '', sources_text)
         
-        # Split by lines
-        lines = sources_text.strip().split("\n")
-        logger.debug(f"Parsing {len(lines)} source lines (after HTML cleanup)")
+        if not sources_text or not sources_text.strip():
+            return citation_list
+        
+        # Use AI (Gemini) to parse citations - NO regex, NO string manipulation
+        logger.info("🤖 Using AI to parse citations (no regex/string manipulation)")
+        
+        try:
+            # Build schema for CitationList using genai types
+            from google.genai import types
+            citation_schema = types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "citations": types.Schema(
+                        type=types.Type.ARRAY,
+                        items=types.Schema(
+                            type=types.Type.OBJECT,
+                            properties={
+                                "number": types.Schema(type=types.Type.INTEGER, description="Citation number [1], [2], etc."),
+                                "url": types.Schema(type=types.Type.STRING, description="Full URL (must start with http:// or https://)"),
+                                "title": types.Schema(type=types.Type.STRING, description="Short descriptive title (8-15 words)"),
+                            },
+                            required=["number", "url", "title"]
+                        ),
+                        description="List of citations"
+                    )
+                },
+                required=["citations"]
+            )
+            
+            # Build grounding URLs context for AI
+            grounding_context = ""
+            if grounding_urls:
+                grounding_context = "\n\nAvailable grounding URLs from Google Search (use these specific URLs when matching domains):\n"
+                for i, grounding in enumerate(grounding_urls[:10], 1):  # Limit to first 10
+                    url = grounding.get('url', '')
+                    title = grounding.get('title', '')
+                    domain = grounding.get('domain', '')
+                    if url:
+                        grounding_context += f"{i}. Domain: {domain} | URL: {url} | Title: {title}\n"
+            
+            # Prompt AI to extract citations
+            prompt = f"""Extract all citations from the following Sources text and return them as a structured CitationList.
 
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
+Sources text:
+{sources_text}
+{grounding_context}
 
-            # Try to extract citation in format: [n]: url – title
-            # CRITICAL FIX: Match URL more precisely to avoid truncation
-            # URLs can contain dashes, so we need to match the full URL before the separator
-            # Pattern: [n]: <url> <separator> <title>
-            # Match URL until whitespace OR explicit separator (em-dash/en-dash with spaces)
-            # URLs can contain dashes (e.g., saas-metrics.com), so don't stop at dashes
-            # Look for separator pattern: space(s) + dash + space(s) + text
-            match = re.match(r"\[(\d+)\]:\s*(https?://[^\s]+?)(?:\s+[–\-]\s+|\s+)(.+)", line)
-            if not match:
-                # Try with just whitespace separator (no dash)
-                match = re.match(r"\[(\d+)\]:\s*(https?://[^\s]+)\s+(.+)", line)
-            if match:
-                number = int(match.group(1))
-                url = match.group(2).strip()
-                title = match.group(3).strip()
+Extract each citation with:
+- number: The citation number [1], [2], etc.
+- url: The full URL (must start with http:// or https://)
+  * If a grounding URL matches the citation domain, use the SPECIFIC grounding URL instead of generic domain URLs
+  * Prefer specific article/report URLs over generic domain URLs
+- title: A short descriptive title (8-15 words)
 
+Return ONLY valid citations with proper URLs. Skip any invalid entries.
+Use the grounding URLs provided above to enhance citations with specific source URLs when available.
+"""
+            
+            gemini_client = GeminiClient()
+            response_text = await gemini_client.generate_content(
+                prompt=prompt,
+                response_schema=citation_schema,
+                enable_tools=False,  # No web search needed for parsing (grounding URLs already provided)
+            )
+            
+            if response_text:
+                import json
                 try:
-                    citation = Citation(number=number, url=url, title=title)
-                    citation_list.citations.append(citation)
-                    logger.debug(f"Parsed citation [{number}]: {url}")
+                    parsed_data = json.loads(response_text)
+                    citation_list = CitationList.model_validate(parsed_data)
+                    logger.info(f"✅ AI parsed {len(citation_list.citations)} citations")
+                except json.JSONDecodeError as e:
+                    logger.error(f"❌ Failed to parse AI response as JSON: {e}")
+                    logger.debug(f"   Response text: {response_text[:500]}")
                 except Exception as e:
-                    logger.warning(f"Failed to parse citation: {e}")
-                    continue
-
+                    logger.error(f"❌ Failed to validate CitationList: {e}")
             else:
-                # Try simpler format: [n]: some text with url
-                match = re.match(r"\[(\d+)\]:\s*(.+)", line)
-                if match:
-                    number = int(match.group(1))
-                    content = match.group(2).strip()
-
-                    # Try to extract URL from content
-                    # CRITICAL FIX: Match full URL, stopping at whitespace, dashes, or end of string
-                    # Don't match trailing punctuation that might be part of the sentence
-                    url_match = re.search(r"https?://[^\s–\-\)\]\}]+", content)
-                    if url_match:
-                        url = url_match.group(0).rstrip('.,;:!?)')
-                        # Remove URL from content to get title
-                        title = re.sub(r"https?://[^\s]+\s*[–\-]?\s*", "", content).strip()
-                        if not title:
-                            title = url
-                        
-                        # CRITICAL FIX: Reject relative URLs
-                        if url.startswith("/"):
-                            logger.warning(f"Skipping relative URL: {url}")
-                            continue
-
-                        try:
-                            citation = Citation(number=number, url=url, title=title)
-                            citation_list.citations.append(citation)
-                            logger.debug(f"Parsed citation [{number}]: {url}")
-                        except Exception as e:
-                            logger.warning(f"Failed to parse citation: {e}")
-
-        # Renumber citations to ensure sequential
-        for i, citation in enumerate(citation_list.citations, 1):
-            citation.number = i
-
-        logger.debug(f"Successfully extracted {len(citation_list.citations)} citations")
+                logger.warning("⚠️ AI parsing returned no response")
+                
+        except Exception as e:
+            logger.error(f"❌ AI citation parsing failed: {e}")
+            logger.warning("   Falling back to empty citation list")
         
         # Resolve any proxy URLs (vertexaisearch.cloud.google.com redirects)
         citation_list = self._resolve_proxy_urls(citation_list)
@@ -633,7 +640,9 @@ class CitationsStage(Stage):
             logger.warning("No company_data available for ultimate citation validation")
             return citation_list
         company_url = context.company_data.get("company_url", "")
-        competitors = getattr(context, 'sitemap_data', {}).get("competitors", [])
+        # Fix: Handle case where sitemap_data exists but is None
+        sitemap_data = getattr(context, 'sitemap_data', None) or {}
+        competitors = sitemap_data.get("competitors", []) if isinstance(sitemap_data, dict) else []
         language = context.language or "en"
         
         # Validate all citations
@@ -673,11 +682,24 @@ class CitationsStage(Stage):
                             logger.warning(f"   ⚠️  {issue}")
                             
                 else:
-                    # Citation failed validation - FILTER IT OUT instead of marking as unverified
-                    logger.warning(f"⚠️ Filtering out Citation [{original_citation.number}]: Validation failed")
-                    for issue in validation_result.issues:
-                        logger.warning(f"   {issue}")
-                    # Skip adding this citation - don't show unverified sources to users
+                    # Citation failed validation - KEEP IT but mark as potentially unverified
+                    # Only filter if it's clearly spam or malicious
+                    should_filter = any(
+                        'spam' in issue.lower() or 'malicious' in issue.lower() or 'phishing' in issue.lower()
+                        for issue in validation_result.issues
+                    )
+                    
+                    if should_filter:
+                        logger.warning(f"⚠️ Filtering out Citation [{original_citation.number}]: Security concern")
+                        for issue in validation_result.issues:
+                            logger.warning(f"   {issue}")
+                    else:
+                        # Keep citation even if validation failed (HTTP errors are common)
+                        # Users can verify sources themselves
+                        logger.warning(f"⚠️ Keeping Citation [{original_citation.number}] despite validation issues:")
+                        for issue in validation_result.issues:
+                            logger.warning(f"   {issue}")
+                        validated_list.citations.append(original_citation)
             
             # Renumber citations
             for i, citation in enumerate(validated_list.citations, 1):

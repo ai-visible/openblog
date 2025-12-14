@@ -1,4 +1,4 @@
-"""All 13 workflow stages (0-12) including Stage 2b."""
+"""All 14 workflow stages (0-13) including conditional Stage 2b."""
 
 from .stage_00_data_fetch import DataFetchStage
 from .stage_01_prompt_build import PromptBuildStage
@@ -13,6 +13,7 @@ from .stage_08_faq_paa import FAQPAAStage
 from .stage_09_image import ImageStage
 from .stage_10_cleanup import CleanupStage
 from .stage_11_storage import StorageStage
+from .stage_12_hybrid_similarity_check import HybridSimilarityCheckStage
 from .stage_12_review_iteration import ReviewIterationStage
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "ImageStage",
     "CleanupStage",
     "StorageStage",
+    "HybridSimilarityCheckStage",
     "ReviewIterationStage",
 ]
 

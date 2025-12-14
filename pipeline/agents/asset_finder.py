@@ -636,12 +636,13 @@ Return ONLY a JSON array of assets, no other text:
             design_system["colors"] = ["#6366F1", "#8B5CF6", "#EC4899"]  # Modern gradient
         
         # Extract style preferences
-        brand_tone = company_data.get("brand_tone", "").lower()
-        if "modern" in brand_tone or "contemporary" in brand_tone:
+        # Support both old (brand_tone) and new (tone) field names
+        tone = (company_data.get("tone") or company_data.get("brand_tone", "")).lower()
+        if "modern" in tone or "contemporary" in tone:
             design_system["style"] = "modern minimalist"
-        elif "classic" in brand_tone or "traditional" in brand_tone:
+        elif "classic" in tone or "traditional" in tone:
             design_system["style"] = "classic professional"
-        elif "creative" in brand_tone or "bold" in brand_tone:
+        elif "creative" in tone or "bold" in tone:
             design_system["style"] = "creative vibrant"
         
         return design_system

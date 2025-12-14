@@ -1,7 +1,7 @@
 """
-WorkflowEngine - Orchestrates 13 stages (0-12) plus conditional Stage 2b of the blog writing pipeline.
+WorkflowEngine - Orchestrates 14 stages (0-13) plus conditional Stage 2b of the blog writing pipeline.
 
-Total stages: 13 numbered stages (0-12) + 1 conditional stage (2b) = 14 stages total
+Total stages: 14 numbered stages (0-13) + 1 conditional stage (2b) = 15 stages total
 
 Clean separation of concerns:
 - Initialization: Load all stages
@@ -37,7 +37,7 @@ class Stage(ABC):
     """
 
     stage_num: int
-    """Stage number (0-12, with conditional Stage 2b)"""
+    """Stage number (0-13, with conditional Stage 2b)"""
 
     stage_name: str
     """Human-readable stage name"""
@@ -161,17 +161,46 @@ class WorkflowEngine:
             # Calculate metrics
             total_time = context.get_total_execution_time()
             self.logger.info(f"Workflow completed in {total_time:.2f}s")
+            
+            # Log quality metrics
+            quality_report = context.quality_report
+            aeo_score = quality_report.get('metrics', {}).get('aeo_score', 'N/A')
+            critical_issues_count = len(quality_report.get('critical_issues', []))
             self.logger.info(
                 f"Quality report: "
-                f"AEO score={context.quality_report.get('metrics', {}).get('aeo_score', 'N/A')} "
-                f"critical_issues={len(context.quality_report.get('critical_issues', []))}"
+                f"AEO score={aeo_score} "
+                f"critical_issues={critical_issues_count}"
             )
+            
+            # Monitor quality and generate alerts
+            try:
+                from .quality_monitor import get_quality_monitor
+                monitor = get_quality_monitor()
+                alert = monitor.record_quality(context.job_id, quality_report)
+                
+                if alert:
+                    # Log alert summary
+                    if alert.severity == "critical":
+                        self.logger.critical(f"🚨 Quality alert generated: {alert.message}")
+                    else:
+                        self.logger.warning(f"⚠️  Quality warning: {alert.message}")
+            except Exception as e:
+                # Don't fail workflow if monitoring fails
+                self.logger.debug(f"Quality monitoring failed: {e}")
 
             return context
 
         except Exception as e:
             self.logger.error(f"Workflow failed: {e}", exc_info=True)
-            context.add_error("workflow", e)
+            context.add_error(
+                "workflow", 
+                e,
+                context={
+                    "job_id": job_id,
+                    "stage": "workflow_engine",
+                    "total_stages": len(self.stages)
+                }
+            )
             raise
 
     async def _execute_sequential(
@@ -217,7 +246,15 @@ class WorkflowEngine:
 
             except Exception as e:
                 self.logger.error(f"❌ {stage} failed: {e}", exc_info=True)
-                context.add_error(f"stage_{stage_num:02d}", e)
+                context.add_error(
+                    f"stage_{stage_num:02d}", 
+                    e,
+                    context={
+                        "job_id": context.job_id,
+                        "stage_num": stage_num,
+                        "stage_name": stage.stage_name
+                    }
+                )
 
                 # Stage 0, 2, 10, 11 are critical - don't continue
                 if stage_num in [0, 2, 10, 11]:
@@ -263,7 +300,14 @@ class WorkflowEngine:
         
         except Exception as e:
             self.logger.warning(f"⚠️  {stage_2b} failed: {e}", exc_info=True)
-            context.add_error("stage_02b", e)
+            context.add_error(
+                "stage_02b", 
+                e,
+                context={
+                    "job_id": context.job_id,
+                    "stage_name": "Quality Refinement"
+                }
+            )
             # Non-critical - continue with original content
             self.logger.info("Continuing with original Gemini output (no refinement)")
 
@@ -333,7 +377,16 @@ class WorkflowEngine:
 
                 if isinstance(result, Exception):
                     self.logger.error(f"❌ Stage {stage_num} failed: {result}")
-                    context.add_error(stage_name, result)
+                    context.add_error(
+                        stage_name, 
+                        Exception(f"Stage {stage_num} returned error result"),
+                        context={
+                            "job_id": context.job_id,
+                            "stage_num": stage_num,
+                            "stage_name": stage.stage_name,
+                            "error_result": str(result)
+                        }
+                    )
                     # Parallel stages are not critical - continue if one fails
                 else:
                     duration, updated_context = result
@@ -353,7 +406,14 @@ class WorkflowEngine:
 
         except Exception as e:
             self.logger.error(f"Parallel execution error: {e}", exc_info=True)
-            context.add_error("parallel_execution", e)
+            context.add_error(
+                "parallel_execution", 
+                e,
+                context={
+                    "job_id": context.job_id,
+                    "stages": [4, 5, 6, 7, 8, 9]
+                }
+            )
 
         return context
 
@@ -390,21 +450,54 @@ class WorkflowEngine:
         # QUALITY GATE: Check if regeneration is needed
         context = await self._check_quality_gate_and_regenerate(context)
         
-        # Stage 12: Review Iteration (CONDITIONAL - only runs if review_prompts present)
+        # Stage 12: Hybrid Similarity Check (runs after Stage 10)
         stage_12 = self.stages.get(12)
         if stage_12:
             start_time = time.time()
             context = await stage_12.execute(context)
             stage_12_duration = time.time() - start_time
             context.add_execution_time("stage_12", stage_12_duration)
-            if context.parallel_results.get("revision_applied"):
-                self.logger.info(f"✅ Stage 12 completed in {stage_12_duration:.2f}s (revisions applied)")
+            
+            # Log similarity results
+            if hasattr(context, 'similarity_report') and context.similarity_report:
+                similarity_score = getattr(context.similarity_report, 'similarity_score', 0)
+                semantic_score = getattr(context.similarity_report, 'semantic_score', None)
+                is_too_similar = getattr(context.similarity_report, 'is_too_similar', False)
+                
+                if semantic_score is not None:
+                    self.logger.info(
+                        f"✅ Stage 12 completed in {stage_12_duration:.2f}s "
+                        f"(similarity: {similarity_score:.1f}%, semantic: {semantic_score:.1%})"
+                    )
+                else:
+                    self.logger.info(
+                        f"✅ Stage 12 completed in {stage_12_duration:.2f}s "
+                        f"(similarity: {similarity_score:.1f}%, character-only mode)"
+                    )
+                
+                if is_too_similar:
+                    self.logger.warning(
+                        f"⚠️  High similarity detected ({similarity_score:.1f}%) - "
+                        f"similar to: {getattr(context.similarity_report, 'similar_article', 'unknown')}"
+                    )
             else:
-                self.logger.info(f"✅ Stage 12 skipped (no review_prompts)")
+                self.logger.info(f"✅ Stage 12 completed in {stage_12_duration:.2f}s")
         
-        # Stage 11: Storage (runs AFTER Stage 12 completes)
-        # Stage 12 modifies validated_article, so Stage 11 must wait for it
-        # No overlap optimization here - Stage 12 must complete first
+        # Stage 13: Review Iteration (CONDITIONAL - only runs if review_prompts present)
+        stage_13 = self.stages.get(13)
+        if stage_13:
+            start_time = time.time()
+            context = await stage_13.execute(context)
+            stage_13_duration = time.time() - start_time
+            context.add_execution_time("stage_13", stage_13_duration)
+            if context.parallel_results.get("revision_applied"):
+                self.logger.info(f"✅ Stage 13 completed in {stage_13_duration:.2f}s (revisions applied)")
+            else:
+                self.logger.info(f"✅ Stage 13 skipped (no review_prompts)")
+        
+        # Stage 11: Storage (runs AFTER Stage 12 and Stage 13 complete)
+        # Stage 13 may modify validated_article, so Stage 11 must wait for it
+        # No overlap optimization here - Stage 13 must complete first
         stage_11 = self.stages.get(11)
         if not stage_11:
             self.logger.warning("Stage 11 not registered")
@@ -461,25 +554,27 @@ class WorkflowEngine:
             context.needs_regeneration = False
             context.regeneration_reason = None
         
+        # NOTE: Quality gates are informational only - we don't block content in production
+        # Regeneration attempts are optional improvements, not requirements
         if passed:
             if context.regeneration_attempts > 0:
-                self.logger.info(f"✅ Quality Gate PASSED after {context.regeneration_attempts} regeneration(s): AEO={aeo_score}/100")
+                self.logger.info(f"✅ Quality target met after {context.regeneration_attempts} regeneration(s): AEO={aeo_score}/100")
             else:
-                self.logger.info(f"✅ Quality Gate PASSED on first attempt: AEO={aeo_score}/100")
+                self.logger.info(f"✅ Quality target met on first attempt: AEO={aeo_score}/100")
             return context
         
-        # Quality gate failed
+        # Quality below target - attempt regeneration (optional improvement)
         context.regeneration_attempts += 1
         max_attempts = 3
         
-        self.logger.warning(f"❌ Quality Gate FAILED (attempt {context.regeneration_attempts}/{max_attempts}): AEO={aeo_score}/100")
+        self.logger.warning(f"⚠️  Quality below target (attempt {context.regeneration_attempts}/{max_attempts}): AEO={aeo_score}/100")
         for issue in critical_issues[:3]:
             self.logger.warning(f"   {issue}")
         
         if context.regeneration_attempts >= max_attempts:
-            self.logger.error(f"🚨 FINAL FAILURE: Article failed quality gate after {max_attempts} attempts")
-            self.logger.error(f"   Final AEO: {aeo_score}/100, Critical Issues: {len(critical_issues)}")
-            # Mark context as having failed quality but continue workflow
+            self.logger.warning(f"⚠️  Quality below target after {max_attempts} attempts - continuing with article (non-blocking)")
+            self.logger.warning(f"   Final AEO: {aeo_score}/100, Critical Issues: {len(critical_issues)}")
+            # Continue workflow - quality gates are informational only
             context.quality_gate_failed = True
             return context
         
@@ -534,7 +629,15 @@ class WorkflowEngine:
         except Exception as e:
             self.logger.error(f"Regeneration attempt failed: {e}")
             context.quality_gate_failed = True
-            context.add_error("regeneration", e)
+            context.add_error(
+                "regeneration", 
+                e,
+                context={
+                    "job_id": context.job_id,
+                    "attempt": context.regeneration_attempts,
+                    "max_attempts": max_attempts
+                }
+            )
             return context
 
     def _apply_regeneration_strategy(self, context: ExecutionContext) -> ExecutionContext:

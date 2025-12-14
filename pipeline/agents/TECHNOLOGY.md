@@ -95,7 +95,7 @@ Output: "AI cybersecurity Benefits section photo illustration infographic diagra
 
 1. **Design System Extraction**:
    - Extracts colors from company industry
-   - Determines style from brand_tone
+   - Determines style from tone (supports both tone and brand_tone for backward compat)
    - Maps to design system parameters
 
 2. **Prompt Building**:
