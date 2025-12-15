@@ -42,7 +42,7 @@ from pipeline.utils.gemini_embeddings import GeminiEmbeddingClient
 from pipeline.blog_generation.stage_00_data_fetch import DataFetchStage
 from pipeline.blog_generation.stage_01_prompt_build import PromptBuildStage
 from pipeline.blog_generation.stage_02_gemini_call import GeminiCallStage
-from pipeline.blog_generation.stage_03_extraction import ExtractionStage
+# Stage 3 (Extraction) is now part of Stage 2 (Generation + Extraction)
 from pipeline.blog_generation.stage_04_citations import CitationsStage
 from pipeline.blog_generation.stage_05_internal_links import InternalLinksStage
 from pipeline.blog_generation.stage_06_toc import TableOfContentsStage
@@ -121,7 +121,7 @@ class ProductionBatchRunner:
             DataFetchStage(),           # Stage 0: Data fetch
             PromptBuildStage(),         # Stage 1: Prompt build  
             GeminiCallStage(),          # Stage 2: Gemini call
-            ExtractionStage(),          # Stage 3: Extraction
+            # Stage 3 (Extraction) is now part of Stage 2
             CitationsStage(),           # Stage 4: Citations
             InternalLinksStage(),       # Stage 5: Internal links
             TableOfContentsStage(),     # Stage 6: ToC

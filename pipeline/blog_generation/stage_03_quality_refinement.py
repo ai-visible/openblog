@@ -1,5 +1,5 @@
 """
-Stage 2b: Quality Refinement
+Stage 3: Quality Refinement
 
 🛡️ AI-ONLY QUALITY REFINEMENT (Zero Regex/String Manipulation)
 
@@ -14,7 +14,7 @@ Uses Gemini AI to detect and fix quality issues:
 4. AEO optimization (citations, conversational phrases, question patterns)
 
 All fixes are performed by Gemini AI - no regex or string manipulation.
-Runs AFTER Stage 3 (Extraction) but BEFORE Stage 4-9 (Parallel stages).
+Runs AFTER Stage 2 (Generation + Extraction) but BEFORE Stage 4-9 (Parallel stages).
 """
 
 import logging
@@ -29,13 +29,9 @@ logger = logging.getLogger(__name__)
 
 class QualityRefinementStage(Stage):
     """
-    Stage 2b: Quality Refinement (conditional sub-stage).
+    Stage 3: Quality Refinement.
     
-    NOTE: This stage has stage_num = 2 (same as Stage 2) but is NOT registered
-    in the stage registry. It's executed conditionally via _execute_stage_2b_conditional()
-    AFTER Stage 3 (Extraction) completes.
-    
-    This is a "sub-stage" that runs conditionally, not part of the main sequential flow.
+    Executed conditionally after Stage 2 (Generation + Extraction).
     
     Uses Gemini AI to detect and fix quality issues in content:
     - Structural issues (truncated lists, malformed HTML, orphaned paragraphs)
@@ -44,7 +40,7 @@ class QualityRefinementStage(Stage):
     - AEO optimization (citations, conversational phrases, question patterns)
     """
     
-    stage_num = 2  # Same as Stage 2, but executed conditionally (not registered)
+    stage_num = 3  # Quality refinement after generation + extraction
     stage_name = "Quality Refinement"
     
     # Quality thresholds
@@ -73,9 +69,9 @@ class QualityRefinementStage(Stage):
     }
     
     # COMPREHENSIVE QUALITY CHECKLIST
-    # These are the issues Stage 2b must detect and fix
+    # These are the issues Stage 3 must detect and fix
     QUALITY_CHECKLIST = """
-    STAGE 2b QUALITY CHECKLIST - All issues to detect and fix:
+    STAGE 3 QUALITY CHECKLIST - All issues to detect and fix:
     
     1. DUPLICATE BULLET LISTS
        Problem: Paragraph followed by <ul><li> that repeats the same content
@@ -124,7 +120,7 @@ class QualityRefinementStage(Stage):
     
     async def execute(self, context: ExecutionContext) -> ExecutionContext:
         """
-        Execute Stage 2b: Detect and fix quality issues.
+        Execute Stage 3: Detect and fix quality issues.
         
         NEW FLOW (Dec 2024):
         1. REGEX CLEANUP FIRST - fast, deterministic fixes
@@ -136,7 +132,7 @@ class QualityRefinementStage(Stage):
         Returns:
             Updated context with refined structured_data
         """
-        logger.info(f"Stage 2b: {self.stage_name}")
+        logger.info(f"Stage 3: {self.stage_name}")
         
         # Validate input
         if not context.structured_data:
@@ -146,7 +142,7 @@ class QualityRefinementStage(Stage):
         # ============================================================
         # STEP 1: SKIP REGEX CLEANUP - AI-only approach
         # ============================================================
-        # All fixes should come from improved prompts in Stage 2 and Stage 2b
+        # All fixes should come from improved prompts in Stage 2
         # No regex cleanup - trust AI to generate correct content
         logger.info("🔧 Step 1: Skipping regex cleanup (AI-only approach)")
         
@@ -935,8 +931,8 @@ Now optimize the Direct Answer above to meet ALL requirements. Ensure it's 30-80
             logger.info(f"🚀 AEO optimization: Enhanced {optimized_count} fields")
             context.structured_data = ArticleOutput(**article_dict)
             # Set flag to skip Stage 10's AEO enforcement (avoids conflicts)
-            context.stage_2b_optimized = True
-            logger.info("   🏷️ Flagged: Stage 10 will skip AEO enforcement (Stage 2b already optimized)")
+            context.stage_3_optimized = True
+            logger.info("   🏷️ Flagged: Stage 10 will skip AEO enforcement (Stage 3 already optimized)")
         else:
             logger.info("ℹ️ AEO optimization: No fields needed enhancement")
         

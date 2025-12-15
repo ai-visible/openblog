@@ -1,10 +1,9 @@
-"""All 14 workflow stages (0-13) including conditional Stage 2b."""
+"""All 13 workflow stages (0-12) including conditional Stage 3."""
 
 from .stage_00_data_fetch import DataFetchStage
 from .stage_01_prompt_build import PromptBuildStage
 from .stage_02_gemini_call import GeminiCallStage
-from .stage_02b_quality_refinement import QualityRefinementStage
-from .stage_03_extraction import ExtractionStage
+from .stage_03_quality_refinement import QualityRefinementStage
 from .stage_04_citations import CitationsStage
 from .stage_05_internal_links import InternalLinksStage
 from .stage_06_toc import TableOfContentsStage
@@ -21,7 +20,6 @@ __all__ = [
     "PromptBuildStage",
     "GeminiCallStage",
     "QualityRefinementStage",
-    "ExtractionStage",
     "CitationsStage",
     "InternalLinksStage",
     "TableOfContentsStage",

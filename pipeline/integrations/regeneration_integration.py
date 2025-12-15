@@ -83,7 +83,7 @@ class BatchGeneratorWithRegeneration:
         from ..blog_generation.stage_00_data_fetch import DataFetchStage
         from ..blog_generation.stage_01_prompt_build import PromptBuildStage
         from ..blog_generation.stage_02_gemini_call import GeminiCallStage
-        from ..blog_generation.stage_03_extraction import ExtractionStage
+        # Stage 3 (Extraction) is now part of Stage 2 (Generation + Extraction)
         from ..blog_generation.stage_04_citations import CitationsStage
         from ..blog_generation.stage_05_internal_links import InternalLinksStage
         from ..blog_generation.stage_06_toc import TableOfContentsStage
@@ -95,7 +95,7 @@ class BatchGeneratorWithRegeneration:
         
         engine = WorkflowEngine()
         stages = [
-            DataFetchStage(), PromptBuildStage(), GeminiCallStage(), ExtractionStage(),
+            DataFetchStage(), PromptBuildStage(), GeminiCallStage(),  # Stage 3 (Extraction) is now part of Stage 2
             CitationsStage(), InternalLinksStage(), TableOfContentsStage(), MetadataStage(),
             FAQPAAStage(), ImageStage(), CleanupStage(), StorageStage()
         ]

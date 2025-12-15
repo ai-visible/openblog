@@ -109,11 +109,11 @@ class CleanupStage(Stage):
             merged_article = self._resolve_sources_proxy_urls(merged_article)
 
         # Step 4a: Enforce AEO requirements (post-processing corrections)
-        # Skip if Stage 2b already optimized (avoids conflicts with natural language citations/phrases)
+        # Skip if Stage 3 already optimized (avoids conflicts with natural language citations/phrases)
         language = context.job_config.get("language", "en")
-        if context.stage_2b_optimized:
-            logger.info("⏭️ Skipping Stage 10 AEO enforcement (Stage 2b already optimized with natural language)")
-            logger.debug("   Stage 2b uses Gemini for natural citations/phrases, Stage 10 uses regex for academic [N] citations")
+        if context.stage_3_optimized:
+            logger.info("⏭️ Skipping Stage 10 AEO enforcement (Stage 3 already optimized with natural language)")
+            logger.debug("   Stage 3 uses Gemini for natural citations/phrases, Stage 10 uses regex for academic [N] citations")
             logger.debug("   Stage 10's academic citations would be stripped by HTML renderer anyway")
         else:
             logger.debug(f"Step 32a: Enforcing AEO requirements (language={language})...")
@@ -1229,7 +1229,7 @@ class CleanupStage(Stage):
             if not title:
                 continue
             
-            # CRITICAL FIX: Strip <p> tags from titles (defense in depth - Stage 2b should have done this, but ensure it here)
+            # CRITICAL FIX: Strip <p> tags from titles (defense in depth - Stage 3 should have done this, but ensure it here)
             import re
             title = re.sub(r'</?p>', '', title).strip()
             

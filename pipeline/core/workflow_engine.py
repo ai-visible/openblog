@@ -1,5 +1,5 @@
 """
-WorkflowEngine - Orchestrates 14 stages (0-13) plus conditional Stage 2b of the blog writing pipeline.
+WorkflowEngine - Orchestrates 13 stages (0-12) plus conditional Stage 3 of the blog writing pipeline.
 
 Total stages: 14 numbered stages (0-13) + 1 conditional stage (2b) = 15 stages total
 
@@ -37,7 +37,7 @@ class Stage(ABC):
     """
 
     stage_num: int
-    """Stage number (0-13, with conditional Stage 2b)"""
+    """Stage number (0-12, with conditional Stage 3)"""
 
     stage_name: str
     """Human-readable stage name"""
@@ -146,9 +146,10 @@ class WorkflowEngine:
         self.logger.info(f"Total execution time target: < 105 seconds")
 
         try:
-            # Sequential: Stages 0-3 (with 2b quality refinement AFTER extraction)
-            context = await self._execute_sequential(context, [0, 1, 2, 3])
-            context = await self._execute_stage_2b_conditional(context)
+            # Sequential: Stages 0-2 (Generation + Extraction)
+            context = await self._execute_sequential(context, [0, 1, 2])
+            # Stage 3: Quality Refinement (conditional)
+            context = await self._execute_stage_3_conditional(context)
 
             # Parallel: Stages 4-9
             context = await self._execute_parallel(context, [4, 5, 6, 7, 8, 9])
@@ -262,46 +263,46 @@ class WorkflowEngine:
 
         return context
 
-    async def _execute_stage_2b_conditional(
+    async def _execute_stage_3_conditional(
         self, context: ExecutionContext
     ) -> ExecutionContext:
         """
-        Conditionally execute Stage 2b (Quality Refinement).
+        Conditionally execute Stage 3 (Quality Refinement).
         
         Only runs if quality issues are detected in Gemini output.
-        This is inserted AFTER Stage 3 (Extraction) and BEFORE Stage 4-9 (Parallel).
+        This is inserted AFTER Stage 2 (Generation + Extraction) and BEFORE Stage 4-9 (Parallel).
         
         Args:
-            context: Current execution context (with structured_data from Stage 3)
+            context: Current execution context (with structured_data from Stage 2)
         
         Returns:
             Updated execution context (potentially with refined structured_data)
         """
-        from ..blog_generation.stage_02b_quality_refinement import QualityRefinementStage
+        from ..blog_generation.stage_03_quality_refinement import QualityRefinementStage
         
-        stage_2b = QualityRefinementStage()
-        self.logger.info(f"Executing conditional {stage_2b}")
+        stage_3 = QualityRefinementStage()
+        self.logger.info(f"Executing conditional {stage_3}")
         
         try:
             # Notify progress start
             if self.progress_callback:
-                self.progress_callback("stage_02b", "2b", False)
+                self.progress_callback("stage_03", "3", False)
             
             start_time = time.time()
-            context = await stage_2b.execute(context)
+            context = await stage_3.execute(context)
             duration = time.time() - start_time
             
-            context.add_execution_time("stage_02b", duration)
-            self.logger.info(f"✅ {stage_2b} completed in {duration:.2f}s")
+            context.add_execution_time("stage_03", duration)
+            self.logger.info(f"✅ {stage_3} completed in {duration:.2f}s")
             
             # Notify progress completion
             if self.progress_callback:
-                self.progress_callback("stage_02b", "2b", True)
+                self.progress_callback("stage_03", "3", True)
         
         except Exception as e:
-            self.logger.warning(f"⚠️  {stage_2b} failed: {e}", exc_info=True)
+            self.logger.warning(f"⚠️  {stage_3} failed: {e}", exc_info=True)
             context.add_error(
-                "stage_02b", 
+                "stage_03", 
                 e,
                 context={
                     "job_id": context.job_id,

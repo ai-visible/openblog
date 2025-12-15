@@ -270,7 +270,7 @@ def get_engine() -> WorkflowEngine:
         from pipeline.blog_generation.stage_00_data_fetch import DataFetchStage
         from pipeline.blog_generation.stage_01_prompt_build import PromptBuildStage
         from pipeline.blog_generation.stage_02_gemini_call import GeminiCallStage
-        from pipeline.blog_generation.stage_03_extraction import ExtractionStage
+        # Stage 3 (Extraction) is now part of Stage 2 (Generation + Extraction)
         from pipeline.blog_generation.stage_04_citations import CitationsStage
         from pipeline.blog_generation.stage_05_internal_links import InternalLinksStage
         from pipeline.blog_generation.stage_06_toc import TableOfContentsStage
@@ -286,7 +286,7 @@ def get_engine() -> WorkflowEngine:
             DataFetchStage(),
             PromptBuildStage(),
             GeminiCallStage(),
-            ExtractionStage(),
+            # Stage 3 (Extraction) is now part of Stage 2
             CitationsStage(),
             InternalLinksStage(),
             TableOfContentsStage(),

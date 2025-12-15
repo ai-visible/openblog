@@ -34,6 +34,8 @@ from ..core.execution_context import ExecutionContext
 from ..core.workflow_engine import Stage
 from ..core.error_handling import with_api_retry, error_reporter, ErrorClassifier
 from ..models.gemini_client import GeminiClient, build_article_response_schema
+from ..models.output_schema import ArticleOutput
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +132,22 @@ class GeminiCallStage(Stage):
 
         # Store raw response (now direct JSON string from structured output)
         context.raw_article = raw_response
+
+        # Extract and validate structured data (previously Stage 3)
+        logger.info("Extracting and validating structured data...")
+        try:
+            json_data = json.loads(raw_response)
+            logger.info("✅ JSON parsing successful")
+            structured_data = self._parse_and_validate(json_data)
+            context.structured_data = structured_data
+            logger.info("✅ Structured data extraction complete")
+            logger.info(f"   Sections: {structured_data.get_active_sections()}")
+            logger.info(f"   FAQs: {structured_data.get_active_faqs()}")
+            logger.info(f"   PAAs: {structured_data.get_active_paas()}")
+            logger.info(f"   Key Takeaways: {structured_data.get_active_takeaways()}")
+        except Exception as e:
+            logger.error(f"❌ Structured data extraction failed: {e}")
+            raise ValueError(f"Failed to extract structured data: {e}")
 
         # Save raw output for debugging/analysis
         try:
@@ -883,6 +901,178 @@ EXAMPLE OF CORRECT FORMATTING:
         logger.info(f"✅ All required fields present")
         logger.info(f"   Meta_Title: {len(meta_title)} chars")
         logger.info(f"   Meta_Description: {len(meta_description)} chars")
+    
+    def _parse_and_validate(self, json_data: Dict[str, Any]) -> ArticleOutput:
+        """
+        Parse JSON data and validate against schema.
+        
+        Handles:
+        - Type coercion (all values → strings for now)
+        - Missing required fields (fills with defaults)
+        - Validation errors (logs warnings, continues)
+        - Field normalization (strip whitespace)
+        - HTML stripping from title fields (CRITICAL: titles must be plain text)
+        
+        Args:
+            json_data: Extracted JSON dictionary
+            
+        Returns:
+            Validated ArticleOutput instance
+            
+        Raises:
+            ValueError: If validation fails
+        """
+        logger.debug("Parsing JSON data...")
+        
+        # Define fields that should NEVER contain HTML (must be plain text)
+        PLAIN_TEXT_FIELDS = {
+            'Headline', 'Subtitle', 'Meta_Title', 'Meta_Description',
+            'section_01_title', 'section_02_title', 'section_03_title',
+            'section_04_title', 'section_05_title', 'section_06_title',
+            'section_07_title', 'section_08_title', 'section_09_title',
+            'faq_01_question', 'faq_02_question', 'faq_03_question',
+            'faq_04_question', 'faq_05_question', 'faq_06_question',
+            'faq_07_question', 'faq_08_question', 'faq_09_question',
+            'faq_10_question',
+            'paa_01_question', 'paa_02_question', 'paa_03_question',
+            'paa_04_question', 'paa_05_question',
+            'takeaway_01', 'takeaway_02', 'takeaway_03',
+            'takeaway_04', 'takeaway_05',
+        }
+        
+        # Normalize data: ensure all values are strings EXCEPT lists/dicts (for tables, etc.)
+        normalized = {}
+        for key, value in json_data.items():
+            if value is None:
+                normalized[key] = ""
+            elif isinstance(value, str):
+                cleaned = value.strip()
+                # CRITICAL FIX: Strip HTML from title/metadata fields
+                if key in PLAIN_TEXT_FIELDS:
+                    cleaned = self._strip_html(cleaned)
+                    if cleaned != value.strip():
+                        logger.warning(f"⚠️  Stripped HTML from {key}: '{value.strip()}' → '{cleaned}'")
+                normalized[key] = cleaned
+            elif isinstance(value, (list, dict)):
+                # CRITICAL FIX: Preserve structured data (tables, etc.) - do NOT stringify
+                normalized[key] = value
+            else:
+                # Convert non-strings to string representation (numbers, booleans, etc.)
+                normalized[key] = str(value).strip()
+        
+        logger.debug(f"Normalized {len(normalized)} fields")
+        
+        # Validate with ArticleOutput schema
+        try:
+            article = ArticleOutput(**normalized)
+            logger.debug("✓ Schema validation passed")
+            return article
+        except Exception as e:
+            # Log validation error details
+            logger.warning(f"⚠️  Validation error: {e}")
+            
+            # Try to extract what we can and fill blanks
+            logger.info("Attempting to recover with partial data...")
+            article = self._recover_partial_data(normalized)
+            logger.info("✅ Partial recovery successful")
+            return article
+    
+    def _recover_partial_data(self, json_data: Dict[str, Any]) -> ArticleOutput:
+        """
+        Recover partial data when validation fails.
+        
+        Strategy:
+        1. Extract required fields (Headline, Teaser, etc.)
+        2. Provide sensible defaults for missing required fields
+        3. Include all optional fields as-is
+        4. Log warnings for critical missing fields
+        
+        Args:
+            json_data: Normalized JSON dictionary
+            
+        Returns:
+            ArticleOutput with available data + defaults
+        """
+        # Define field mappings (some fields may have variant names)
+        field_map = {
+            "Headline": ["Headline", "headline", "title"],
+            "Meta_Title": ["Meta Title", "Meta_Title", "MetaTitle"],
+            "Meta_Description": ["Meta Description", "Meta_Description", "MetaDescription"],
+        }
+        
+        # Try to find values with variant names
+        for standard_name, variants in field_map.items():
+            if standard_name not in json_data or not json_data[standard_name]:
+                for variant in variants:
+                    if variant in json_data and json_data[variant]:
+                        json_data[standard_name] = json_data[variant]
+                        logger.debug(f"Mapped {variant} → {standard_name}")
+                        break
+        
+        # Provide defaults for truly missing required fields
+        defaults = {
+            "Headline": "Untitled Article",
+            "Teaser": "This article explores the topic in depth.",
+            "Direct_Answer": "This topic is important and relevant.",
+            "Intro": "This article provides comprehensive information on the subject.",
+            "Meta_Title": "Article",
+            "Meta_Description": "Read this article for more information.",
+        }
+        
+        for field, default in defaults.items():
+            if not json_data.get(field):
+                logger.warning(f"⚠️  Missing required field '{field}', using default")
+                json_data[field] = default
+        
+        # Now validate again with defaults in place
+        try:
+            article = ArticleOutput(**json_data)
+            return article
+        except Exception as e:
+            # Last resort: create minimal valid instance
+            logger.error(f"Recovery failed: {e}")
+            logger.info("Creating minimal valid article...")
+            
+            minimal = ArticleOutput(
+                Headline=json_data.get("Headline", "Untitled"),
+                Teaser=json_data.get("Teaser", "Article content."),
+                Direct_Answer=json_data.get("Direct_Answer", "See article for details."),
+                Intro=json_data.get("Intro", "Article introduction."),
+                Meta_Title=json_data.get("Meta_Title", "Article"),
+                Meta_Description=json_data.get("Meta_Description", "Article"),
+            )
+            return minimal
+    
+    def _strip_html(self, text: str) -> str:
+        """
+        Strip ALL HTML tags from text, leaving only plain text.
+        
+        Used for title fields, metadata, and questions where HTML is forbidden.
+        
+        Args:
+            text: Input text that may contain HTML
+            
+        Returns:
+            Plain text with all HTML tags removed
+        """
+        if not text:
+            return text
+        
+        # Remove all HTML tags
+        cleaned = re.sub(r'<[^>]+>', '', text)
+        
+        # Clean up any leftover HTML entities
+        cleaned = cleaned.replace('&nbsp;', ' ')
+        cleaned = cleaned.replace('&lt;', '<')
+        cleaned = cleaned.replace('&gt;', '>')
+        cleaned = cleaned.replace('&amp;', '&')
+        cleaned = cleaned.replace('&quot;', '"')
+        cleaned = cleaned.replace('&#39;', "'")
+        
+        # Clean up extra whitespace
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        
+        return cleaned
     
     @with_api_retry("stage_02")
     async def _generate_content_with_retry(self, context: ExecutionContext, response_schema: Any = None, system_instruction: str = None) -> str:

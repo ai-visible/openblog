@@ -21,8 +21,7 @@ try:
     from ..blog_generation.stage_00_data_fetch import DataFetchStage
     from ..blog_generation.stage_01_prompt_build import PromptBuildStage
     from ..blog_generation.stage_02_gemini_call import GeminiCallStage
-    from ..blog_generation.stage_02b_quality_refinement import QualityRefinementStage
-    from ..blog_generation.stage_03_extraction import ExtractionStage
+    from ..blog_generation.stage_03_quality_refinement import QualityRefinementStage
     from ..blog_generation.stage_04_citations import CitationsStage
     from ..blog_generation.stage_05_internal_links import InternalLinksStage
     from ..blog_generation.stage_06_toc import TableOfContentsStage
@@ -127,13 +126,12 @@ class ProductionStageFactory(IStageFactory):
         registry = {}
         
         # Standard pipeline stages (0-13)
-        # NOTE: Stage 2b (QualityRefinementStage) is NOT registered here.
-        # It's executed conditionally via _execute_stage_2b_conditional() after Stage 3.
+        # NOTE: Stage 3 (QualityRefinementStage) is NOT registered here.
+        # It's executed conditionally via _execute_stage_3_conditional() after Stage 2.
         stage_classes = [
             (0, DataFetchStage),
             (1, PromptBuildStage),
             (2, GeminiCallStage),
-            (3, ExtractionStage),
             (4, CitationsStage),
             (5, InternalLinksStage),
             (6, TableOfContentsStage),
