@@ -27,7 +27,7 @@ from pipeline.blog_generation.stage_05_internal_links import InternalLinksStage
 from pipeline.blog_generation.stage_06_toc import TableOfContentsStage
 from pipeline.blog_generation.stage_07_metadata import MetadataStage
 from pipeline.blog_generation.stage_08_faq_paa import FAQPAAStage
-from pipeline.blog_generation.stage_09_image import ImageStage
+from pipeline.blog_generation.stage_06_image import ImageStage
 from pipeline.blog_generation.stage_10_cleanup import CleanupStage
 from pipeline.blog_generation.stage_11_storage import StorageStage
 

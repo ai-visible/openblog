@@ -39,7 +39,7 @@ async def run_full_isaac_pipeline():
         from pipeline.blog_generation.stage_06_toc import TableOfContentsStage
         from pipeline.blog_generation.stage_07_metadata import MetadataStage
         from pipeline.blog_generation.stage_08_faq_paa import FAQPAAStage
-        from pipeline.blog_generation.stage_09_image import ImageStage
+        from pipeline.blog_generation.stage_06_image import ImageStage
         from pipeline.blog_generation.stage_10_cleanup import CleanupStage
         from pipeline.blog_generation.stage_11_storage import StorageStage
         
