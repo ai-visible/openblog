@@ -1294,23 +1294,9 @@ class GraphicsGenerator:
         if not self.drive_service:
             raise ValueError("Drive service not initialized - cannot upload")
         
-        file_metadata = {"name": file_name}
-        if folder_id:
-            file_metadata["parents"] = [folder_id]
-        
-        media = MediaInMemoryUpload(
-            image_bytes,
-            mimetype="image/png",
-            resumable=True
-        )
-        
-        file = self.drive_service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields="id"
-        ).execute()
-        
-        return file.get("id")
+        # Google Drive integration removed
+        logger.warning("Google Drive integration removed - upload disabled")
+        return None
     
     async def _make_public(self, file_id: str):
         """Make a Google Drive file publicly accessible (disabled - Google Drive integration removed)."""
