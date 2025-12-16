@@ -26,7 +26,16 @@ import logging
 import base64
 import io
 from typing import Optional, Dict, Any
-from PIL import Image as PILImage
+
+# PIL is optional - only needed for image processing
+try:
+    from PIL import Image as PILImage
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    PILImage = None
+    logger = logging.getLogger(__name__)
+    logger.warning("PIL/Pillow not available - image processing features will be limited")
 
 logger = logging.getLogger(__name__)
 
@@ -217,8 +226,11 @@ class GoogleImagenClient:
         try:
             import hashlib
             from pathlib import Path
-            from PIL import Image as PILImage
             import io
+            
+            if not PIL_AVAILABLE:
+                logger.warning("PIL not available - cannot save image locally")
+                return None
             
             # Create output directory
             output_dir = Path("output/images")
@@ -253,12 +265,18 @@ class GoogleImagenClient:
                 logger.info(f"PNG saved: {png_filepath}")
             
             # Convert to WebP (better compression, ~30-50% smaller)
-            if image_bytes:
+            if image_bytes and PIL_AVAILABLE:
                 # Open image with PIL
                 img = PILImage.open(io.BytesIO(image_bytes))
                 
                 # Save as WebP with high quality
                 img.save(str(webp_filepath), format='WEBP', quality=85, method=6)
+            elif image_bytes:
+                # Fallback: save as PNG if PIL not available
+                logger.warning("PIL not available - saving as PNG only")
+                with open(str(png_filepath), 'wb') as f:
+                    f.write(image_bytes)
+                return str(png_filepath)
                 
                 # Log file sizes
                 png_size = png_filepath.stat().st_size / 1024
