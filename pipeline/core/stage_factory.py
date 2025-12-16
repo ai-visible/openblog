@@ -197,7 +197,7 @@ class ProductionStageFactory(IStageFactory):
         stages = []
         failed_stages = []
         
-        # Create stages in order (0-9)
+        # Create stages in order (0-13)
         for stage_num in sorted(self._stage_registry.keys()):
             try:
                 stage_instance = self._create_stage_instance(stage_num)
@@ -208,8 +208,8 @@ class ProductionStageFactory(IStageFactory):
                 self.logger.error(f"Failed to create stage {stage_num}: {e}")
                 failed_stages.append(stage_num)
                 
-                # Critical stages - fail fast
-                if stage_num in [0, 1, 2, 3, 8, 9]:
+                # Critical stages - fail fast (updated for full 14-stage pipeline)
+                if stage_num in [0, 1, 2, 3, 11, 12]:
                     raise StageRegistrationError(
                         f"Critical stage {stage_num} creation failed: {e}"
                     )
@@ -313,8 +313,8 @@ class ProductionStageFactory(IStageFactory):
             duplicates = [num for num in stage_numbers if stage_numbers.count(num) > 1]
             raise StageValidationError(f"Duplicate stages found: {duplicates}")
         
-        # Validate critical stages are present
-        critical_stages = [0, 1, 2, 3, 8, 9]
+        # Validate critical stages are present (updated for 14-stage pipeline)
+        critical_stages = [0, 1, 2, 3, 11, 12]
         missing_critical = [num for num in critical_stages if num not in stage_numbers]
         if missing_critical:
             raise StageValidationError(f"Missing critical stages: {missing_critical}")
