@@ -18,41 +18,19 @@ from .workflow_engine import Stage
 
 # Import all stage implementations
 try:
-    # #region agent log
-    try: import traceback, os; log_path = '/Users/federicodeponte/openblog/.cursor/debug.log'; os.makedirs(os.path.dirname(log_path), exist_ok=True) if os.path.dirname(log_path) else None; log_file = open(log_path, 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:21","message":"Starting stage imports","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
-    except: pass
-    # #endregion
     from ..blog_generation.stage_00_data_fetch import DataFetchStage
-    # #region agent log
-    try: import traceback, os; log_path = '/Users/federicodeponte/openblog/.cursor/debug.log'; os.makedirs(os.path.dirname(log_path), exist_ok=True) if os.path.dirname(log_path) else None; log_file = open(log_path, 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:23","message":"Imported stage_00","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
-    except: pass
-    # #endregion
     from ..blog_generation.stage_01_prompt_build import PromptBuildStage
     from ..blog_generation.stage_02_gemini_call import GeminiCallStage
     from ..blog_generation.stage_03_quality_refinement import QualityRefinementStage
     from ..blog_generation.stage_04_citations import CitationsStage
     from ..blog_generation.stage_05_internal_links import InternalLinksStage
-    # Stage 6 (ToC) and Stage 8 (Metadata) consolidated into Stage 2
-    # Stage 10 (FAQ/PAA) consolidated into Stage 3
+    # Stages 6-8 consolidated: ToC and Metadata into Stage 2, FAQ/PAA validation into Stage 3
     from ..blog_generation.stage_06_image import ImageStage
     from ..blog_generation.stage_07_similarity_check import HybridSimilarityCheckStage
     from ..blog_generation.stage_08_cleanup import CleanupStage
-    from ..blog_generation.stage_12_review_iteration import ReviewIterationStage
-    # #region agent log
-    try: import traceback, os; log_path = '/Users/federicodeponte/openblog/.cursor/debug.log'; os.makedirs(os.path.dirname(log_path), exist_ok=True) if os.path.dirname(log_path) else None; log_file = open(log_path, 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:35","message":"About to import stage_09_storage","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
-    except: pass
-    # #endregion
     from ..blog_generation.stage_09_storage import StorageStage
-    # #region agent log
-    try: import traceback, os; log_path = '/Users/federicodeponte/openblog/.cursor/debug.log'; os.makedirs(os.path.dirname(log_path), exist_ok=True) if os.path.dirname(log_path) else None; log_file = open(log_path, 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:37","message":"All imports successful","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
-    except: pass
-    # #endregion
     # Stage 13 (Review Iteration) removed - use /refresh endpoint instead
 except ImportError as e:
-    # #region agent log
-    try: import traceback, os; log_path = '/Users/federicodeponte/openblog/.cursor/debug.log'; os.makedirs(os.path.dirname(log_path), exist_ok=True) if os.path.dirname(log_path) else None; log_file = open(log_path, 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:40","message":"ImportError caught","data":{{"error":str(e),"traceback":"{traceback.format_exc().replace(chr(10),chr(92)+"n")}"}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
-    except: pass
-    # #endregion
     logging.error(f"Failed to import stage modules: {e}")
     # For graceful degradation, we'll still provide the factory interface
     pass
@@ -145,21 +123,21 @@ class ProductionStageFactory(IStageFactory):
         """
         registry = {}
         
-        # Standard pipeline stages (0-10) - CONSOLIDATED VERSION
-        # Stages 6 (ToC) and 8 (Metadata) consolidated into Stage 2
-        # Stage 10 (FAQ/PAA) consolidated into Stage 3
+        # Standard pipeline stages (0-13)
+        # NOTE: Stage 3 (QualityRefinementStage) is NOT registered here.
+        # It's executed conditionally via _execute_stage_3_conditional() after Stage 2.
         stage_classes = [
             (0, DataFetchStage),
             (1, PromptBuildStage),
-            (2, GeminiCallStage),  # Includes ToC + Metadata (formerly Stages 6 & 8)
-            (3, QualityRefinementStage),  # Includes FAQ/PAA validation (formerly Stage 10)
+            (2, GeminiCallStage),
             (4, CitationsStage),
             (5, InternalLinksStage),
-            (6, ImageStage),  # Renumbered from 7
-            (7, HybridSimilarityCheckStage),  # Renumbered from 9
-            (8, CleanupStage),  # Renumbered from 11
-            (9, StorageStage),  # Renumbered from 12
-            (10, ReviewIterationStage),  # Renumbered from 13
+            # Stages 6-8 consolidated: ToC and Metadata into Stage 2, FAQ/PAA validation into Stage 3
+            (6, ImageStage),  # Renumbered from 9
+            (7, HybridSimilarityCheckStage),  # Renumbered from 12
+            (8, CleanupStage),  # Renumbered from 10
+            (9, StorageStage),  # Renumbered from 11
+            # Stage 13 (Review Iteration) removed - use /refresh endpoint instead
         ]
         
         for stage_num, stage_class in stage_classes:
@@ -195,7 +173,7 @@ class ProductionStageFactory(IStageFactory):
         stages = []
         failed_stages = []
         
-        # Create stages in order (0-10) - Consolidated pipeline
+        # Create stages in order (0-9)
         for stage_num in sorted(self._stage_registry.keys()):
             try:
                 stage_instance = self._create_stage_instance(stage_num)
@@ -206,7 +184,7 @@ class ProductionStageFactory(IStageFactory):
                 self.logger.error(f"Failed to create stage {stage_num}: {e}")
                 failed_stages.append(stage_num)
                 
-                # Critical stages - fail fast (consolidated 11-stage pipeline)
+                # Critical stages - fail fast
                 if stage_num in [0, 1, 2, 3, 8, 9]:
                     raise StageRegistrationError(
                         f"Critical stage {stage_num} creation failed: {e}"
@@ -311,7 +289,7 @@ class ProductionStageFactory(IStageFactory):
             duplicates = [num for num in stage_numbers if stage_numbers.count(num) > 1]
             raise StageValidationError(f"Duplicate stages found: {duplicates}")
         
-        # Validate critical stages are present (consolidated 11-stage pipeline)
+        # Validate critical stages are present
         critical_stages = [0, 1, 2, 3, 8, 9]
         missing_critical = [num for num in critical_stages if num not in stage_numbers]
         if missing_critical:

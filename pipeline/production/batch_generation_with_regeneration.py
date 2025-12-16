@@ -115,7 +115,7 @@ class ProductionBatchRunner:
         """Initialize workflow engine with all pipeline stages."""
         engine = WorkflowEngine()
         
-        # Register all 10 stages (0-9) in order
+        # Register all 13 stages (0-12) in order (Stage 2b is conditional, not registered)
         stages = [
             DataFetchStage(),           # Stage 0: Data fetch
             PromptBuildStage(),         # Stage 1: Prompt build  

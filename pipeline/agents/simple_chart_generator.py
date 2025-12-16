@@ -11,8 +11,15 @@ import json
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 from dataclasses import dataclass
-from PIL import Image
 import io
+
+# PIL is optional - only needed for image conversion
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    Image = None
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +216,10 @@ class SimpleChartGenerator:
                 await browser.close()
             
             # Convert to WebP
+            if not PIL_AVAILABLE:
+                logger.warning("PIL/Pillow not available - returning PNG instead of WebP")
+                return screenshot_bytes  # Return PNG if PIL not available
+            
             img = Image.open(io.BytesIO(screenshot_bytes))
             webp_buffer = io.BytesIO()
             img.save(webp_buffer, format='WEBP', quality=95)
