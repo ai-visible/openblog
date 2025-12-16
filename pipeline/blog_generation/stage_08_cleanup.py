@@ -79,9 +79,14 @@ def _encode_html_entities_in_content(article_dict: Dict[str, Any]) -> Dict[str, 
                             '&amp;',
                             part
                         )
+                        # Replace em dashes (—) and en dashes (–) with regular hyphens (-)
+                        encoded_text = re.sub(r'[—–]', '-', encoded_text)
                         encoded_parts.append(encoded_text)
                 
                 encoded_dict[field] = ''.join(encoded_parts)
+            else:
+                # No HTML tags, but still replace em/en dashes
+                encoded_dict[field] = re.sub(r'[—–]', '-', content)
     
     return encoded_dict
 
@@ -145,7 +150,7 @@ class CleanupStage(Stage):
         # Also store ArticleOutput for Stage 9
         try:
             context.article_output = ArticleOutput.model_validate(validated_article)
-                        except Exception as e:
+        except Exception as e:
             logger.debug(f"Could not create ArticleOutput (non-critical): {e}")
             context.article_output = None
 

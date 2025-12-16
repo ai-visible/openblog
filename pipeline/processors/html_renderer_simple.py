@@ -283,16 +283,27 @@ class HTMLRendererSimple:
 
     @staticmethod
     def _render_toc(article: Dict[str, Any]) -> str:
-        """Render table of contents."""
+        """Render table of contents with short labels (3-5 words max)."""
         items = []
+        
+        # Check if toc_dict is available (from Stage 6/Stage 2)
+        toc_dict = article.get("toc") or article.get("toc_dict", {})
+        
         for i in range(1, 10):
             # Handle both uppercase and lowercase keys
             title = article.get(f"section_{i:02d}_title") or article.get(f"section_{i:02d}_title", "")
             if title:
                 anchor = f"toc_{i:02d}"
-                # Strip HTML and truncate long titles for TOC
-                clean_title = HTMLRendererSimple._strip_html(title)
-                display_title = clean_title[:50] + "..." if len(clean_title) > 50 else clean_title
+                
+                # Use toc_dict label if available, otherwise generate short label
+                toc_key = f"{i:02d}"  # "01", "02", etc.
+                if toc_dict and toc_key in toc_dict:
+                    display_title = toc_dict[toc_key]
+                else:
+                    # Strip HTML and create short TOC label (3-5 words max)
+                    clean_title = HTMLRendererSimple._strip_html(title)
+                    display_title = HTMLRendererSimple._create_short_toc_label(clean_title)
+                
                 items.append(f'<li><a href="#{anchor}">{HTMLRendererSimple._escape(display_title)}</a></li>')
         
         if not items:
@@ -304,6 +315,44 @@ class HTMLRendererSimple:
                 {'\n                '.join(items)}
             </ul>
         </div>"""
+    
+    @staticmethod
+    def _create_short_toc_label(title: str, max_words: int = 5) -> str:
+        """
+        Create a short TOC label from a full title (3-5 words max).
+        
+        Args:
+            title: Full section title
+            max_words: Maximum number of words (default: 5)
+            
+        Returns:
+            Short label for TOC
+        """
+        import re
+        
+        # Remove common prefixes that add length without meaning
+        prefixes_to_remove = [
+            r'^What is\s+',
+            r'^How does\s+',
+            r'^Why does\s+',
+            r'^When should\s+',
+            r'^Where can\s+',
+        ]
+        
+        cleaned = title
+        for pattern in prefixes_to_remove:
+            cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
+        
+        # Split into words
+        words = cleaned.split()
+        
+        # Take first max_words words
+        if len(words) <= max_words:
+            return cleaned
+        
+        # Take first max_words words and add ellipsis
+        short_words = words[:max_words]
+        return ' '.join(short_words) + '...'
 
     @staticmethod
     def _render_citations(sources: str) -> str:

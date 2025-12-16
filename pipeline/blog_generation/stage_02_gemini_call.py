@@ -1169,21 +1169,36 @@ EXAMPLE OF CORRECT FORMATTING:
         
         for num, title in sections:
             if title and title.strip():
-                # Generate short label (1-2 words)
-                words = title.strip().split()
+                # Generate short label (3-5 words max for better readability)
+                clean_title = title.strip()
+                
+                # Remove common question prefixes that add length
+                import re
+                prefixes_to_remove = [
+                    r'^What is\s+',
+                    r'^How does\s+',
+                    r'^Why does\s+',
+                    r'^When should\s+',
+                    r'^Where can\s+',
+                ]
+                for pattern in prefixes_to_remove:
+                    clean_title = re.sub(pattern, '', clean_title, flags=re.IGNORECASE)
+                
+                words = clean_title.split()
                 meaningful_words = [
                     w for w in words
                     if w.lower() not in stop_words and len(w) > 2
                 ]
                 
+                # Use 3-5 words for better context while keeping it short
                 if meaningful_words:
-                    short_label = " ".join(meaningful_words[:2])
+                    short_label = " ".join(meaningful_words[:5])  # Max 5 words
                 else:
-                    short_label = " ".join(words[:2]) if words else "Section"
+                    short_label = " ".join(words[:5]) if words else "Section"
                 
-                # Truncate if too long
-                if len(short_label) > 50:
-                    short_label = short_label[:47] + "..."
+                # Truncate if still too long (safety check)
+                if len(short_label) > 60:
+                    short_label = short_label[:57] + "..."
                 
                 toc.add_entry(num, title.strip(), short_label)
         

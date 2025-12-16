@@ -149,7 +149,7 @@ class ArticleExporter:
     @staticmethod
     def _html_to_pdf(html_content: str, output_path: Path) -> None:
         """
-        Convert HTML to PDF.
+        Convert HTML to PDF with embedded images.
 
         Args:
             html_content: HTML content
@@ -162,8 +162,14 @@ class ArticleExporter:
             import requests
             import base64
 
+            # Convert local image references to base64 data URLs for PDF generation
+            html_with_images = ArticleExporter._embed_images_for_pdf(html_content, output_path.parent)
+            
+            # Add CSS for PDF margins
+            html_with_images = ArticleExporter._add_pdf_margins(html_with_images)
+
             payload = {
-                "html": html_content,
+                "html": html_with_images,
                 "format": "A4",
                 "landscape": False,
                 "print_background": True,
@@ -171,6 +177,12 @@ class ArticleExporter:
                 "viewport_width": 1200,
                 "device_scale_factor": 2,
                 "color_scheme": "light",
+                "margin": {
+                    "top": "25mm",
+                    "right": "20mm",
+                    "bottom": "25mm",
+                    "left": "20mm"
+                }
             }
 
             response = requests.post(
@@ -192,6 +204,110 @@ class ArticleExporter:
             raise
 
     @staticmethod
+    def _embed_images_for_pdf(html_content: str, base_path: Path) -> str:
+        """
+        Convert local image references to base64 data URLs for PDF generation.
+        
+        Args:
+            html_content: HTML content with local image paths
+            base_path: Base directory to resolve relative paths
+            
+        Returns:
+            HTML with base64 data URLs
+        """
+        import re
+        
+        def replace_image_src(match):
+            img_tag = match.group(0)
+            src = match.group(1)
+            
+            # Skip if already a data URL or external URL
+            if src.startswith(('data:', 'http://', 'https://')):
+                return img_tag
+            
+            # Resolve relative path
+            img_path = base_path / src
+            if not img_path.exists():
+                # Try resolving from project root
+                project_root = Path(__file__).parent.parent.parent
+                img_path = project_root / src
+                if not img_path.exists():
+                    logger.debug(f"Image not found for PDF: {src}")
+                    return img_tag
+            
+            try:
+                # Read and encode image
+                img_data = img_path.read_bytes()
+                
+                # Determine MIME type
+                ext = img_path.suffix.lower()
+                mime_type = {
+                    '.png': 'image/png',
+                    '.jpg': 'image/jpeg', 
+                    '.jpeg': 'image/jpeg',
+                    '.webp': 'image/webp',
+                    '.gif': 'image/gif'
+                }.get(ext, 'image/png')
+                
+                # Create base64 data URL
+                b64_data = base64.b64encode(img_data).decode('utf-8')
+                data_url = f"data:{mime_type};base64,{b64_data}"
+                
+                # Replace src in the img tag
+                new_img_tag = img_tag.replace(f'src="{src}"', f'src="{data_url}"')
+                
+                logger.debug(f"Embedded image for PDF: {src} ({len(img_data)} bytes)")
+                return new_img_tag
+                
+            except Exception as e:
+                logger.warning(f"Failed to embed image {src} for PDF: {e}")
+                return img_tag
+        
+        # Find and replace all image src attributes
+        pattern = r'<img[^>]+src="([^"]+)"[^>]*>'
+        modified_html = re.sub(pattern, replace_image_src, html_content)
+        
+        return modified_html
+
+    @staticmethod
+    def _add_pdf_margins(html_content: str) -> str:
+        """
+        Add CSS margins for PDF export.
+        
+        Args:
+            html_content: HTML content
+            
+        Returns:
+            HTML with PDF margin CSS added
+        """
+        import re
+        
+        # CSS for PDF margins
+        pdf_margin_css = """
+        @page {
+            margin: 25mm 20mm;
+        }
+        body {
+            padding: 20px;
+        }
+        """
+        
+        # Insert CSS before closing </head> tag
+        if '</head>' in html_content:
+            html_content = html_content.replace('</head>', f'<style>{pdf_margin_css}</style></head>')
+        elif '<style>' in html_content:
+            # Insert before first </style> tag
+            html_content = re.sub(r'(</style>)', f'{pdf_margin_css}\\1', html_content, count=1)
+        else:
+            # Insert before </head> or at start of <body>
+            if '</head>' in html_content:
+                html_content = html_content.replace('</head>', f'<style>{pdf_margin_css}</style></head>')
+            elif '<body>' in html_content:
+                html_content = html_content.replace('<body>', f'<body><style>{pdf_margin_css}</style>')
+        
+        return html_content
+
+    @staticmethod
     def _to_csv(article: Dict[str, Any], output_path: Path) -> None:
         """
         Export article to CSV format (flat table).
@@ -210,7 +326,9 @@ class ArticleExporter:
         rows.append(["Meta Description", article.get("Meta_Description", "")])
         rows.append(["Teaser", article.get("Teaser", "")])
         rows.append(["Direct Answer", article.get("Direct_Answer", "")])
-        rows.append(["Intro", article.get("Intro", "")])
+        # Convert HTML to single-line for easier Excel viewing
+        intro = article.get("Intro", "")
+        rows.append(["Intro", ArticleExporter._html_to_single_line(intro) if intro else ""])
         rows.append(["Word Count", article.get("word_count", 0)])
         rows.append(["Read Time", article.get("read_time", 0)])
 
@@ -221,7 +339,9 @@ class ArticleExporter:
             title = article.get(f"section_{i:02d}_title", "")
             content = article.get(f"section_{i:02d}_content", "")
             if title or content:
-                rows.append([f"Section {i}", title, content[:500]])  # Truncate long content
+                # Convert HTML to single-line for easier Excel viewing
+                content_single_line = ArticleExporter._html_to_single_line(content)
+                rows.append([f"Section {i}", title, content_single_line])  # Full content, no truncation
 
         # FAQ
         rows.append([])
@@ -269,6 +389,11 @@ class ArticleExporter:
             ws1.append(["Subtitle", article.get("Subtitle", "")])
             ws1.append(["Meta Title", article.get("Meta_Title", "")])
             ws1.append(["Meta Description", article.get("Meta_Description", "")])
+            # Convert HTML fields to single-line
+            intro = article.get("Intro", "")
+            direct_answer = article.get("Direct_Answer", "")
+            ws1.append(["Intro", ArticleExporter._html_to_single_line(intro) if intro else ""])
+            ws1.append(["Direct Answer", ArticleExporter._html_to_single_line(direct_answer) if direct_answer else ""])
             ws1.append(["Word Count", article.get("word_count", 0)])
             ws1.append(["Read Time", article.get("read_time", 0)])
             ws1.append(["Publication Date", article.get("publication_date", "")])
@@ -280,7 +405,9 @@ class ArticleExporter:
                 title = article.get(f"section_{i:02d}_title", "")
                 content = article.get(f"section_{i:02d}_content", "")
                 if title or content:
-                    ws2.append([f"Section {i}", title, content])
+                    # Convert HTML to single-line for easier Excel viewing
+                    content_single_line = ArticleExporter._html_to_single_line(content)
+                    ws2.append([f"Section {i}", title, content_single_line])
 
             # Sheet 3: FAQ
             ws3 = wb.create_sheet("FAQ")
@@ -313,6 +440,28 @@ class ArticleExporter:
             logger.warning("openpyxl not installed, skipping XLSX export. Install with: pip install openpyxl")
             raise
 
+    @staticmethod
+    def _html_to_single_line(html_content: str) -> str:
+        """
+        Convert multi-line HTML to single-line for easier Excel viewing.
+        
+        Args:
+            html_content: Multi-line HTML content
+            
+        Returns:
+            Single-line HTML content
+        """
+        if not html_content:
+            return ""
+        
+        # Remove newlines and extra whitespace between tags
+        # Keep single space between tags and text
+        single_line = re.sub(r'\s+', ' ', html_content)  # Replace all whitespace with single space
+        single_line = re.sub(r'>\s+<', '><', single_line)  # Remove spaces between tags
+        single_line = single_line.strip()
+        
+        return single_line
+    
     @staticmethod
     def _generate_slug(text: str) -> str:
         """Generate URL slug from text."""

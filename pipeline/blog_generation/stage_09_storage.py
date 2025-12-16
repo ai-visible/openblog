@@ -220,21 +220,32 @@ class StorageStage(Stage):
         )
 
         # Step 7: Export in multiple formats (if requested)
-        export_formats = context.job_config.get("export_formats", ["html", "json"])
+        export_formats = ["html", "json"]  # Default formats
+        if context.job_config and isinstance(context.job_config, dict):
+            export_formats = context.job_config.get("export_formats", export_formats)
+        else:
+            logger.debug("job_config not available or not a dict, using default export_formats")
+        
         exported_files = {}
         
         try:
             from ..processors.article_exporter import ArticleExporter
             output_dir = Path("output") / context.job_id
+            logger.debug(f"Exporting to: {output_dir} with formats: {export_formats}")
             exported_files = ArticleExporter.export_all(
                 article=context.validated_article,
                 html_content=html_content,
                 output_dir=output_dir,
                 formats=export_formats,
             )
-            logger.info(f"✅ Exported {len(exported_files)} format(s): {', '.join(exported_files.keys())}")
+            if exported_files:
+                logger.info(f"✅ Exported {len(exported_files)} format(s): {', '.join(exported_files.keys())}")
+            else:
+                logger.warning("⚠️  ArticleExporter.export_all() returned empty dict - no files exported")
         except Exception as e:
-            logger.warning(f"Export failed: {e}")
+            logger.error(f"❌ Export failed: {e}")
+            import traceback
+            logger.debug(f"Export exception traceback:\n{traceback.format_exc()}")
 
         # Step 8: Set final article and storage result
         context.final_article = context.validated_article

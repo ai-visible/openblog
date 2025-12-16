@@ -79,8 +79,7 @@ class TableOfContents(BaseModel):
         because stage_08_cleanup flattens nested dicts with prefix.
         So toc["01"] becomes toc_01 after flattening.
         
-        FIXED: Now uses full_title (truncated to ~50 chars) instead of short_label
-        to avoid over-truncation of TOC entries.
+        Uses short_label (3-5 words) for concise TOC entries.
 
         Returns:
             Dictionary with numeric keys and readable labels as values.
@@ -88,9 +87,8 @@ class TableOfContents(BaseModel):
         result = {}
         for entry in self.entries:
             # Use simple numeric key, will become toc_01 after flattening
-            # CRITICAL FIX: Use full_title (truncated) instead of short_label
-            # Short labels (1-2 words) were too aggressive and lost meaning
-            label = self._truncate_title(entry.full_title)
+            # Use short_label (3-5 words) for concise TOC entries
+            label = entry.short_label
             result[f"{entry.section_num:02d}"] = label
         return result
     
