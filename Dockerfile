@@ -22,9 +22,13 @@ RUN python -m playwright install chromium
 # Copy application code
 COPY . .
 
+# Copy and make entrypoint executable
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Expose port
 EXPOSE 8000
 
-# Start command - use shell form to expand $PORT
-CMD python3 -m uvicorn service.api:app --host 0.0.0.0 --port ${PORT:-8000}
+# Use entrypoint script
+ENTRYPOINT ["/entrypoint.sh"]
 
