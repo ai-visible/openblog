@@ -68,6 +68,7 @@ trace_*/
 
 # Credentials and secrets
 *.json
+!railway.json
 *-credentials.json
 *-key.json
 *-service-account.json
