@@ -32,9 +32,13 @@ try:
     from ..blog_generation.stage_03_quality_refinement import QualityRefinementStage
     from ..blog_generation.stage_04_citations import CitationsStage
     from ..blog_generation.stage_05_internal_links import InternalLinksStage
+    from ..blog_generation.stage_06_toc import TableOfContentsStage
     from ..blog_generation.stage_06_image import ImageStage
+    from ..blog_generation.stage_07_metadata import MetadataStage
     from ..blog_generation.stage_07_similarity_check import HybridSimilarityCheckStage
+    from ..blog_generation.stage_08_faq_paa import FAQPAAStage
     from ..blog_generation.stage_08_cleanup import CleanupStage
+    from ..blog_generation.stage_12_review_iteration import ReviewIterationStage
     # #region agent log
     try: import traceback, os; log_path = '/Users/federicodeponte/openblog/.cursor/debug.log'; os.makedirs(os.path.dirname(log_path), exist_ok=True) if os.path.dirname(log_path) else None; log_file = open(log_path, 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:35","message":"About to import stage_09_storage","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
     except: pass
