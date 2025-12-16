@@ -8,7 +8,7 @@ Uses google-genai SDK directly for:
   - Provides real-time web information
 - Response parsing (JSON extraction from plain text)
 - Retry logic with exponential backoff
-- DataForSEO fallback when Google Search quota is exhausted
+- Serper.dev fallback when Google Search quota is exhausted
 
 Configuration:
 - Model: gemini-3.0-pro-preview (default, Gemini 3.0 Pro Preview)
@@ -16,7 +16,7 @@ Configuration:
 - Response mime type: text/plain (NOT application/json)
 - Temperature: 0.2 (consistency)
 - Tools: Google Search (includes URL context via search results)
-- Fallback: DataForSEO Standard mode ($0.50/1k queries)
+- Fallback: Serper.dev API
 """
 
 import os
@@ -31,18 +31,18 @@ from ..models.output_schema import ArticleOutput, ComparisonTable
 
 logger = logging.getLogger(__name__)
 
-# Lazy import for DataForSEO fallback to avoid circular imports
+# Lazy import for Serper.dev fallback to avoid circular imports
 _search_executor = None
 
 def _get_search_executor():
-    """Lazy initialization of search executor for DataForSEO fallback."""
+    """Lazy initialization of search executor for Serper.dev fallback."""
     global _search_executor
     if _search_executor is None:
         try:
             from .search_tool_executor import get_search_executor
             _search_executor = get_search_executor()
         except ImportError:
-            logger.warning("DataForSEO fallback not available - search_tool_executor not found")
+            logger.warning("Serper.dev fallback not available - search_tool_executor not found")
             return None
     return _search_executor
 
@@ -612,16 +612,16 @@ class GeminiClient:
         
         return modified_data
 
-    async def _try_dataforseo_fallback(
+    async def _try_serper_fallback(
         self, 
         prompt: str, 
         original_error: Exception
     ) -> Optional[str]:
         """
-        Attempt DataForSEO fallback when Google Search fails.
+        Attempt Serper.dev fallback when Google Search fails.
         
         This is a best-effort fallback - it extracts the main topic from the
-        prompt and performs a DataForSEO search, then retries content generation
+        prompt and performs a Serper.dev search, then retries content generation
         with the search results injected into the prompt.
         
         Args:
@@ -633,7 +633,7 @@ class GeminiClient:
         """
         executor = _get_search_executor()
         if not executor or not executor.is_fallback_available():
-            logger.warning("DataForSEO fallback not available")
+            logger.warning("Serper.dev fallback not available")
             return None
             
         try:
@@ -643,7 +643,7 @@ class GeminiClient:
                 logger.warning("Could not extract search query from prompt")
                 return None
                 
-            logger.info(f"🔍 DataForSEO fallback search: '{query}'")
+            logger.info(f"🔍 Serper.dev fallback search: '{query}'")
             
             # Execute fallback search
             search_results = await executor.execute_search_with_fallback(
@@ -653,15 +653,15 @@ class GeminiClient:
             )
             
             if not search_results or "failed" in search_results.lower():
-                logger.warning(f"DataForSEO search failed: {search_results}")
+                logger.warning(f"Serper.dev search failed: {search_results}")
                 return None
                 
             # Inject search results into prompt and retry WITHOUT grounding
             enhanced_prompt = self._inject_search_results(prompt, search_results)
             
-            logger.info("🔄 Retrying content generation with DataForSEO results...")
+            logger.info("🔄 Retrying content generation with Serper.dev results...")
             
-            # Retry without Google Search grounding (we have DataForSEO results now)
+            # Retry without Google Search grounding (we have Serper.dev results now)
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,
@@ -677,13 +677,13 @@ class GeminiClient:
             )
             
             if response and hasattr(response, "text") and response.text:
-                logger.info(f"✅ DataForSEO fallback succeeded ({len(response.text)} chars)")
+                logger.info(f"✅ Serper.dev fallback succeeded ({len(response.text)} chars)")
                 return response.text
                 
             return None
             
         except Exception as e:
-            logger.error(f"DataForSEO fallback error: {e}")
+            logger.error(f"Serper.dev fallback error: {e}")
             return None
 
     def _extract_search_query_from_prompt(self, prompt: str) -> Optional[str]:
@@ -744,7 +744,7 @@ class GeminiClient:
             Enhanced prompt with search results
         """
         injection = f"""
-## Web Research Results (from DataForSEO)
+## Web Research Results (from Serper.dev)
 
 The following search results provide current information for your article:
 

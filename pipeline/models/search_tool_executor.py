@@ -1,4 +1,4 @@
-# ABOUTME: Unified search tool executor with Google Search + DataForSEO fallback support
+# ABOUTME: Unified search tool executor with Google Search + Serper.dev fallback support
 # ABOUTME: Handles search operations with automatic fallback when Google Search quota is exhausted
 
 import logging
@@ -12,27 +12,26 @@ class SearchToolExecutor:
     """Unified search tool executor with fallback support.
     
     Primary: Google Search (free, built into Gemini)
-    Fallback: DataForSEO (paid, $0.50/1k queries)
+    Fallback: Serper.dev (paid API)
     """
 
     def __init__(self):
-        """Initialize search executor with DataForSEO fallback."""
-        self.dataforseo_provider = None
+        """Initialize search executor with Serper.dev fallback."""
+        self.serper_provider = None
         
-        # Initialize DataForSEO provider if credentials available
+        # Initialize Serper.dev provider if API key available
         try:
-            from .dataforseo_provider import DataForSeoProvider
+            from .serper_provider import SerperProvider
             
-            login = os.getenv("DATAFORSEO_LOGIN")
-            password = os.getenv("DATAFORSEO_PASSWORD")
+            api_key = os.getenv("SERPER_API_KEY")
             
-            if login and password:
-                self.dataforseo_provider = DataForSeoProvider(login, password)
-                logger.info("✅ DataForSEO fallback initialized")
+            if api_key:
+                self.serper_provider = SerperProvider(api_key)
+                logger.info("✅ Serper.dev fallback initialized")
             else:
-                logger.warning("⚠️  DataForSEO credentials not found - fallback disabled")
+                logger.warning("⚠️  Serper.dev API key not found - fallback disabled")
         except ImportError:
-            logger.warning("⚠️  DataForSEO provider not available")
+            logger.warning("⚠️  Serper.dev provider not available")
 
     async def execute_search_with_fallback(
         self, 
@@ -42,7 +41,7 @@ class SearchToolExecutor:
         country: str = "us",
         language: str = "en"
     ) -> str:
-        """Execute search with DataForSEO fallback when Google Search fails.
+        """Execute search with Serper.dev fallback when Google Search fails.
 
         Args:
             query: Search query string
@@ -66,10 +65,10 @@ class SearchToolExecutor:
             
             if quota_exhausted:
                 should_use_fallback = True
-                logger.warning(f"🚨 Google Search quota exhausted, activating DataForSEO fallback")
+                logger.warning(f"🚨 Google Search quota exhausted, activating Serper.dev fallback")
 
-        if should_use_fallback and self.dataforseo_provider:
-            return await self._execute_dataforseo_search(
+        if should_use_fallback and self.serper_provider:
+            return await self._execute_serper_search(
                 query, max_results, country, language
             )
         elif primary_error:
@@ -81,14 +80,14 @@ class SearchToolExecutor:
             logger.warning("⚠️  SearchToolExecutor called without error")
             return f"Search unavailable for: {query}"
 
-    async def _execute_dataforseo_search(
+    async def _execute_serper_search(
         self, 
         query: str, 
         max_results: int,
         country: str,
         language: str
     ) -> str:
-        """Execute search using DataForSEO provider.
+        """Execute search using Serper.dev provider.
 
         Args:
             query: Search query string
@@ -100,61 +99,59 @@ class SearchToolExecutor:
             Formatted search results string
         """
         try:
-            logger.info(f"🔍 Executing DataForSEO search: '{query}' ({country}, {language})")
+            logger.info(f"🔍 Executing Serper.dev search: '{query}' ({country}, {language})")
             
-            response = await self.dataforseo_provider.search(
+            response = await self.serper_provider.search(
                 query=query,
                 num_results=max_results * 2,  # Get more results, format fewer
                 language=language,
                 country=country
             )
 
-            if not response.success:
-                error_msg = f"DataForSEO search failed: {response.error}"
+            if not response.get("success"):
+                error_msg = f"Serper.dev search failed: {response.get('error', 'Unknown error')}"
                 logger.error(f"❌ {error_msg}")
                 return error_msg
 
             # Format results for LLM consumption
-            formatted_results = self.dataforseo_provider.format_for_llm(
+            formatted_results = self.serper_provider.format_for_llm(
                 response, max_results=max_results
             )
 
             # Log success metrics
             logger.info(
-                f"✅ DataForSEO fallback successful: {len(response.results)} results, "
-                f"~${response.cost_credits:.4f} cost"
+                f"✅ Serper.dev fallback successful: {len(response.get('results', []))} results"
             )
             
             return formatted_results
 
         except Exception as e:
-            error_msg = f"DataForSEO fallback error: {str(e)}"
+            error_msg = f"Serper.dev fallback error: {str(e)}"
             logger.error(f"❌ {error_msg}")
             return error_msg
 
     def is_fallback_available(self) -> bool:
-        """Check if DataForSEO fallback is available."""
-        return self.dataforseo_provider is not None and self.dataforseo_provider.is_configured()
+        """Check if Serper.dev fallback is available."""
+        return self.serper_provider is not None and self.serper_provider.is_configured()
 
     def get_fallback_info(self) -> Dict[str, Any]:
         """Get information about fallback configuration."""
-        if not self.dataforseo_provider:
+        if not self.serper_provider:
             return {
                 "available": False,
-                "reason": "DataForSEO provider not initialized"
+                "reason": "Serper.dev provider not initialized"
             }
 
-        if not self.dataforseo_provider.is_configured():
+        if not self.serper_provider.is_configured():
             return {
                 "available": False,
-                "reason": "DataForSEO credentials not configured"
+                "reason": "Serper.dev API key not configured"
             }
 
         return {
             "available": True,
-            "provider": self.dataforseo_provider.name,
-            "cost_per_1k": self.dataforseo_provider.cost_per_1k,
-            "credentials_set": bool(self.dataforseo_provider.api_login)
+            "provider": self.serper_provider.name,
+            "api_key_set": bool(self.serper_provider.api_key)
         }
 
 

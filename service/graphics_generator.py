@@ -6,7 +6,7 @@ Perfect for blog graphics: headlines, quotes, metrics, CTAs, infographics.
 Uses:
 - HTML/CSS templates (dark theme, glassmorphism)
 - Playwright for HTML → PNG conversion
-- Google Drive for storage
+- Base64 encoding for image output (Google Drive removed)
 """
 
 import os
@@ -22,9 +22,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaInMemoryUpload
+# Google Drive integration removed
+# from google.oauth2 import service_account
+# from googleapiclient.discovery import build
+# from googleapiclient.http import MediaInMemoryUpload
 
 # Import from openfigma library (optional - only for graphics generation)
 try:
@@ -76,8 +77,7 @@ class GraphicsGenerator:
     CONTENT_OUTPUT_FOLDER = "04 - Content Output"
     GRAPHICS_FOLDER = "Graphics (Final)"
     
-    # Domain-wide delegation subject
-    DELEGATION_SUBJECT = os.getenv("GOOGLE_DELEGATION_SUBJECT", "")
+    # Google Drive integration removed
     
     def __init__(self, theme: Optional[Theme] = None):
         # Initialize Google Drive service
@@ -101,37 +101,9 @@ class GraphicsGenerator:
             logger.warning("Playwright not available - graphics generation will be limited")
     
     def _init_drive_service(self):
-        """Initialize Google Drive API service with domain-wide delegation."""
-        try:
-            service_account_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or os.getenv("GOOGLE_SERVICE_ACCOUNT")
-            if not service_account_json:
-                logger.warning("GOOGLE_SERVICE_ACCOUNT_JSON not set - Drive upload disabled")
-                return None
-            
-            # Parse JSON string if needed
-            if isinstance(service_account_json, str):
-                import json
-                service_account_info = json.loads(service_account_json)
-            else:
-                service_account_info = service_account_json
-            
-            credentials = service_account.Credentials.from_service_account_info(
-                service_account_info,
-                scopes=['https://www.googleapis.com/auth/drive.file'],
-            )
-            
-            # Use domain-wide delegation if subject provided
-            if self.DELEGATION_SUBJECT:
-                credentials = credentials.with_subject(self.DELEGATION_SUBJECT)
-                logger.info(f"Using domain-wide delegation: {self.DELEGATION_SUBJECT}")
-            
-            drive_service = build('drive', 'v3', credentials=credentials)
-            logger.info("Drive service initialized")
-            return drive_service
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize Drive service: {e}")
-            return None
+        """Initialize Google Drive API service (disabled - Google Drive integration removed)."""
+        logger.warning("Google Drive integration removed - Drive upload disabled")
+        return None
     
     async def generate(self, request: GraphicsGenerationRequest) -> GraphicsGenerationResponse:
         """
@@ -304,7 +276,7 @@ class GraphicsGenerator:
         drive_file_id = None
         image_url = ""
         
-        if project_folder_id and self.drive_service:
+        if False:  # Drive upload disabled
             try:
                 target_folder_id = await self._get_graphics_folder(project_folder_id)
                 if not target_folder_id:
@@ -1303,37 +1275,14 @@ class GraphicsGenerator:
             return None
     
     def _find_folder(self, parent_id: str, name: str) -> Optional[str]:
-        """Find a folder by name within a parent folder."""
-        if not self.drive_service:
-            return None
-        
-        query = f"name='{name}' and '{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
-        results = self.drive_service.files().list(
-            q=query,
-            spaces="drive",
-            fields="files(id, name)",
-        ).execute()
-        
-        files = results.get("files", [])
-        return files[0]["id"] if files else None
+        """Find a folder by name within a parent folder (disabled - Google Drive integration removed)."""
+        logger.warning("Google Drive integration removed - folder operations disabled")
+        return None
     
-    def _create_folder(self, name: str, parent_id: str) -> str:
-        """Create a folder in Drive."""
-        if not self.drive_service:
-            raise ValueError("Drive service not initialized")
-        
-        file_metadata = {
-            "name": name,
-            "mimeType": "application/vnd.google-apps.folder",
-            "parents": [parent_id],
-        }
-        
-        folder = self.drive_service.files().create(
-            body=file_metadata,
-            fields="id"
-        ).execute()
-        
-        return folder.get("id")
+    def _create_folder(self, name: str, parent_id: str) -> Optional[str]:
+        """Create a folder in Drive (disabled - Google Drive integration removed)."""
+        logger.warning("Google Drive integration removed - folder creation disabled")
+        return None
     
     async def _upload_to_drive(
         self,
@@ -1364,22 +1313,7 @@ class GraphicsGenerator:
         return file.get("id")
     
     async def _make_public(self, file_id: str):
-        """Make a Google Drive file publicly accessible."""
-        if not self.drive_service:
-            raise ValueError("Drive service not initialized - cannot make public")
-        
-        try:
-            permission = {
-                "type": "anyone",
-                "role": "reader",
-            }
-            self.drive_service.permissions().create(
-                fileId=file_id,
-                body=permission,
-                fields="id",
-            ).execute()
-            logger.info(f"File {file_id} made public.")
-        except Exception as e:
-            logger.error(f"Failed to make file {file_id} public: {e}")
-            raise
+        """Make a Google Drive file publicly accessible (disabled - Google Drive integration removed)."""
+        logger.warning("Google Drive integration removed - cannot make file public")
+        return None
 

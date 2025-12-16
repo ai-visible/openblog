@@ -708,13 +708,7 @@ class AsyncBlogRequest(BlogGenerationRequest):
     priority: int = Field(2, description="Job priority: 1=high, 2=normal, 3=low")
     max_duration_minutes: int = Field(30, description="Maximum job duration (5-30 minutes for quality)")
     
-    # Legacy Supabase integration (optional)
-    article_id: Optional[str] = Field(None, description="Pre-created article UUID to update")
-    supabase_url: Optional[str] = Field(None, description="Supabase project URL")
-    supabase_service_key: Optional[str] = Field(None, description="Supabase service role key")
-    gdoc_folder_id: Optional[str] = Field(None, description="Parent folder ID for Google Doc")
-    keyword_id: Optional[str] = Field(None, description="Keyword UUID to mark as written")
-    project_id: Optional[str] = Field(None, description="Project UUID for the article")
+    # Removed: Supabase integration (no longer supported)
     
     # Client metadata
     client_info: Optional[Dict[str, Any]] = Field(None, description="Client metadata for tracking")
@@ -722,27 +716,18 @@ class AsyncBlogRequest(BlogGenerationRequest):
 
 async def _async_generate_and_save(request: AsyncBlogRequest, job_id: str):
     """
-    Background task: Generate blog and write results directly to Supabase.
-    This runs after the HTTP response is returned.
+    Background task: Generate blog asynchronously.
+    Note: Supabase integration removed - this endpoint now just generates content.
     """
     import traceback
-    from supabase import create_client
     
     logger = logging.getLogger(__name__)
-    logger.info(f"[{job_id}] Starting async blog generation for article {request.article_id}")
+    logger.info(f"[{job_id}] Starting async blog generation")
     
-    supabase = None
     start_time = datetime.now()
     
     try:
-        # Initialize Supabase client - use request params if provided, otherwise fall back to env vars
-        supabase_url = request.supabase_url or os.getenv("SUPABASE_URL")
-        supabase_service_key = request.supabase_service_key or os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        
-        if not supabase_url or not supabase_service_key:
-            raise ValueError("Supabase credentials not found. Provide supabase_url and supabase_service_key in request, or set SUPABASE_URL and SUPABASE_KEY/SUPABASE_SERVICE_ROLE_KEY environment variables.")
-        
-        supabase = create_client(supabase_url, supabase_service_key)
+        # Supabase integration removed - just generate content
         
         # Update status to 'generating'
         supabase.table('articles').update({
@@ -805,105 +790,13 @@ async def _async_generate_and_save(request: AsyncBlogRequest, job_id: str):
         
         logger.info(f"[{job_id}] Blog generated successfully in {duration:.1f}s")
         
-        # Create Google Doc if folder provided
-        gdoc_id = None
-        gdoc_url = None
-        if request.gdoc_folder_id and response.html_content:
-            try:
-                gdoc_result = await _create_google_doc_for_article(
-                    title=response.headline or request.primary_keyword,
-                    html_content=response.html_content,
-                    folder_id=request.gdoc_folder_id,
-                )
-                gdoc_id = gdoc_result.get("id")
-                gdoc_url = gdoc_result.get("webViewLink")
-                logger.info(f"[{job_id}] Created Google Doc: {gdoc_id}")
-            except Exception as doc_err:
-                logger.warning(f"[{job_id}] Failed to create Google Doc: {doc_err}")
-        
-        # Update article with generated content
-        update_data = {
-            'title': response.headline or request.primary_keyword,
-            'headline': response.headline,
-            'slug': response.slug,
-            'html_content': response.html_content,
-            'direct_answer': response.direct_answer,
-            'intro': response.intro,
-            'teaser': response.teaser,
-            'word_count': response.quality_report.metrics.word_count if response.quality_report else None,
-            'generation_status': 'completed',
-            'generation_error': None,
-            'status': 'in_review',  # content_status enum: move from 'drafting' to 'in_review'
-            'updated_at': datetime.now().isoformat(),
-        }
-        
-        if gdoc_id:
-            update_data['gdoc_id'] = gdoc_id
-            update_data['gdoc_url'] = gdoc_url
-        
-        # Store sections, FAQ, etc. in prompts JSONB column
-        update_data['prompts'] = {
-            'sections': [s.model_dump() for s in response.sections] if response.sections else [],
-            'faq': [f.model_dump() for f in response.faq] if response.faq else [],
-            'paa': [p.model_dump() for p in response.paa] if response.paa else [],
-            'key_takeaways': response.key_takeaways or [],
-            'meta_title': response.meta_title,
-            'meta_description': response.meta_description,
-            'quality_report': response.quality_report.model_dump() if response.quality_report else None,
-        }
-        
-        # Image data
-        if response.image_url:
-            update_data['image_url'] = response.image_url
-            update_data['image_alt_text'] = response.image_alt_text
-            update_data['image_drive_id'] = response.image_drive_id
-        
-        supabase.table('articles').update(update_data).eq('id', request.article_id).execute()
-        
-        # Generate content embedding for semantic deduplication
-        try:
-            embedding = await _generate_content_embedding(
-                headline=response.headline,
-                intro=response.intro,
-                direct_answer=response.direct_answer,
-                teaser=response.teaser,
-                html_content=response.html_content,
-            )
-            if embedding and len(embedding) > 0:
-                supabase.table('articles').update({
-                    'content_embedding': embedding,
-                    'embedded_at': datetime.now().isoformat(),
-                }).eq('id', request.article_id).execute()
-                logger.info(f"[{job_id}] Content embedding generated ({len(embedding)} dimensions)")
-            else:
-                logger.warning(f"[{job_id}] Empty embedding returned from service")
-        except Exception as embed_err:
-            logger.warning(f"[{job_id}] Failed to generate content embedding: {embed_err}")
-        
-        # Mark keyword as written if provided
-        if request.keyword_id:
-            supabase.table('keywords').update({
-                'written': True,
-                'updated_at': datetime.now().isoformat(),
-            }).eq('id', request.keyword_id).execute()
-        
-        logger.info(f"[{job_id}] Article {request.article_id} updated successfully")
+        # Supabase integration removed - content is generated but not saved to database
+        # Results are available via /jobs/{job_id}/status endpoint
         
     except Exception as e:
         error_msg = str(e)
         logger.error(f"[{job_id}] Async generation failed: {error_msg}")
         logger.error(traceback.format_exc())
-        
-        # Update article with error status
-        if supabase:
-            try:
-                supabase.table('articles').update({
-                    'generation_status': 'failed',
-                    'generation_error': error_msg[:1000],  # Truncate long errors
-                    'updated_at': datetime.now().isoformat(),
-                }).eq('id', request.article_id).execute()
-            except Exception as update_err:
-                logger.error(f"[{job_id}] Failed to update error status: {update_err}")
 
 
 async def _generate_content_embedding(
@@ -1098,26 +991,10 @@ async def write_blog_async(request: AsyncBlogRequest):
     - AEO scoring and quality gates
     """
     try:
-        # Build client_info with Supabase integration details BEFORE creating job config
+        # Build client_info (Supabase integration removed)
         client_info = request.client_info or {}
-        if request.article_id:
-            # Use request params if provided, otherwise fall back to env vars
-            supabase_url = request.supabase_url or os.getenv("SUPABASE_URL")
-            supabase_service_key = request.supabase_service_key or os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-            
-            # Add Supabase integration info to client_info (only if we have credentials)
-            if supabase_url and supabase_service_key:
-                client_info = {
-                    **client_info,
-                    "article_id": request.article_id,
-                    "supabase_url": supabase_url,
-                    "supabase_service_key": supabase_service_key,
-                    "gdoc_folder_id": request.gdoc_folder_id,
-                    "keyword_id": request.keyword_id,
-                    "project_id": request.project_id,
-                }
         
-        # Build job configuration with client_info included
+        # Build job configuration
         job_config = JobConfig(
             primary_keyword=request.primary_keyword,
             company_url=request.company_url,
@@ -2234,10 +2111,10 @@ if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
     
     uvicorn.run(
-        "api:app",
+        "service.api:app",
         host=host,
         port=port,
-        reload=True,
+        reload=False,  # Disable reload in production
         log_level="info",
     )
 
