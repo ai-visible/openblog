@@ -22,7 +22,13 @@ logger = logging.getLogger(__name__)
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# #region agent log
+import traceback; log_file = open('/Users/federicodeponte/openblog/.cursor/debug.log', 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"C","location":"api.py:25","message":"About to import WorkflowEngine","data":{{"stack":"{traceback.format_stack()[-3:]}","timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
+# #endregion
 from pipeline.core import WorkflowEngine
+# #region agent log
+import traceback; log_file = open('/Users/federicodeponte/openblog/.cursor/debug.log', 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"C","location":"api.py:27","message":"WorkflowEngine imported","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
+# #endregion
 from pipeline.core.job_manager import JobManager, JobConfig, JobStatus, get_job_manager
 # Content similarity checker for SEO duplicate detection
 from pipeline.utils.similarity_checker import (
@@ -270,32 +276,34 @@ def get_engine() -> WorkflowEngine:
         from pipeline.blog_generation.stage_00_data_fetch import DataFetchStage
         from pipeline.blog_generation.stage_01_prompt_build import PromptBuildStage
         from pipeline.blog_generation.stage_02_gemini_call import GeminiCallStage
-        # Stage 3 (Extraction) is now part of Stage 2 (Generation + Extraction)
+        from pipeline.blog_generation.stage_03_quality_refinement import QualityRefinementStage
         from pipeline.blog_generation.stage_04_citations import CitationsStage
         from pipeline.blog_generation.stage_05_internal_links import InternalLinksStage
         from pipeline.blog_generation.stage_06_toc import TableOfContentsStage
+        from pipeline.blog_generation.stage_06_image import ImageStage
         from pipeline.blog_generation.stage_07_metadata import MetadataStage
+        from pipeline.blog_generation.stage_07_similarity_check import HybridSimilarityCheckStage
         from pipeline.blog_generation.stage_08_faq_paa import FAQPAAStage
-        from pipeline.blog_generation.stage_09_image import ImageStage
-        from pipeline.blog_generation.stage_10_cleanup import CleanupStage
+        from pipeline.blog_generation.stage_08_cleanup import CleanupStage
+        from pipeline.blog_generation.stage_09_storage import StorageStage
         from pipeline.blog_generation.stage_12_review_iteration import ReviewIterationStage
-        from pipeline.blog_generation.stage_11_storage import StorageStage
         
         _engine = WorkflowEngine()
         _engine.register_stages([
             DataFetchStage(),
             PromptBuildStage(),
             GeminiCallStage(),
-            # Stage 3 (Extraction) is now part of Stage 2
+            QualityRefinementStage(),
             CitationsStage(),
             InternalLinksStage(),
             TableOfContentsStage(),
-            MetadataStage(),
-            FAQPAAStage(),
             ImageStage(),
+            MetadataStage(),
+            HybridSimilarityCheckStage(),
+            FAQPAAStage(),
             CleanupStage(),
-            ReviewIterationStage(),
             StorageStage(),
+            ReviewIterationStage(),
         ])
     return _engine
 

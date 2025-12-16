@@ -18,19 +18,40 @@ from .workflow_engine import Stage
 
 # Import all stage implementations
 try:
+    # #region agent log
+    import traceback; log_file = open('/Users/federicodeponte/openblog/.cursor/debug.log', 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:21","message":"Starting stage imports","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
+    # #endregion
     from ..blog_generation.stage_00_data_fetch import DataFetchStage
+    # #region agent log
+    import traceback; log_file = open('/Users/federicodeponte/openblog/.cursor/debug.log', 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:23","message":"Imported stage_00","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
+    # #endregion
     from ..blog_generation.stage_01_prompt_build import PromptBuildStage
     from ..blog_generation.stage_02_gemini_call import GeminiCallStage
     from ..blog_generation.stage_03_quality_refinement import QualityRefinementStage
     from ..blog_generation.stage_04_citations import CitationsStage
     from ..blog_generation.stage_05_internal_links import InternalLinksStage
     # Stages 6-8 consolidated: ToC and Metadata into Stage 2, FAQ/PAA validation into Stage 3
+    # #region agent log
+    import traceback; log_file = open('/Users/federicodeponte/openblog/.cursor/debug.log', 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:29","message":"About to import stage_06_image","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
+    # #endregion
     from ..blog_generation.stage_06_image import ImageStage
+    # #region agent log
+    import traceback; log_file = open('/Users/federicodeponte/openblog/.cursor/debug.log', 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:31","message":"Imported stage_06_image successfully","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
+    # #endregion
     from ..blog_generation.stage_07_similarity_check import HybridSimilarityCheckStage
     from ..blog_generation.stage_08_cleanup import CleanupStage
+    # #region agent log
+    import traceback; log_file = open('/Users/federicodeponte/openblog/.cursor/debug.log', 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:35","message":"About to import stage_09_storage","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
+    # #endregion
     from ..blog_generation.stage_09_storage import StorageStage
+    # #region agent log
+    import traceback; log_file = open('/Users/federicodeponte/openblog/.cursor/debug.log', 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:37","message":"All imports successful","data":{{"timestamp":{__import__("time").time()}}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
+    # #endregion
     # Stage 13 (Review Iteration) removed - use /refresh endpoint instead
 except ImportError as e:
+    # #region agent log
+    import traceback; log_file = open('/Users/federicodeponte/openblog/.cursor/debug.log', 'a'); log_file.write(f'{{"sessionId":"debug-session","runId":"import-trace","hypothesisId":"A","location":"stage_factory.py:40","message":"ImportError caught","data":{{"error":str(e),"traceback":"{traceback.format_exc().replace(chr(10),chr(92)+"n")}"}},"timestamp":{int(__import__("time").time()*1000)}}}\n'); log_file.close()
+    # #endregion
     logging.error(f"Failed to import stage modules: {e}")
     # For graceful degradation, we'll still provide the factory interface
     pass
