@@ -28,4 +28,5 @@ RUN chmod +x /entrypoint.sh
 EXPOSE 3000
 
 # Use entrypoint script to ensure PORT variable expansion
-ENTRYPOINT ["/entrypoint.sh"]
+# Use bash explicitly to ensure shell variable expansion works
+ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
