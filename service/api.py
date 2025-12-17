@@ -12,8 +12,9 @@ import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field, field_validator
 from dotenv import load_dotenv
 
@@ -63,6 +64,51 @@ app = FastAPI(
     description="AI-powered blog article generation service",
     version="1.0.0",
 )
+
+# Security setup
+security = HTTPBearer()
+
+def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Verify API key from Authorization header."""
+    # Get valid API keys from environment (comma-separated for multiple keys)
+    valid_keys = os.getenv("OPENBLOG_API_KEYS", "").split(",")
+    valid_keys = [key.strip() for key in valid_keys if key.strip()]
+    
+    # If no API keys configured, allow access (backward compatibility)
+    if not valid_keys:
+        logger.warning("⚠️  No API keys configured - API is open to public!")
+        return None
+    
+    # Check if provided token matches any valid key
+    if credentials.credentials not in valid_keys:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    logger.debug(f"✅ Valid API key used: {credentials.credentials[:8]}...")
+    return credentials.credentials
+
+# Optional: Alternative API key via header (for backward compatibility)
+def verify_api_key_header(x_api_key: str = Header(None, alias="X-API-Key")):
+    """Alternative: Verify API key from X-API-Key header."""
+    if not x_api_key:
+        return None
+        
+    valid_keys = os.getenv("OPENBLOG_API_KEYS", "").split(",")
+    valid_keys = [key.strip() for key in valid_keys if key.strip()]
+    
+    if not valid_keys:
+        return None
+        
+    if x_api_key not in valid_keys:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API key",
+        )
+    
+    return x_api_key
 
 # Rate limiting setup
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -597,7 +643,7 @@ async def health_check():
 
 
 @app.post("/write", response_model=BlogGenerationResponse)
-async def write_blog(request: BlogGenerationRequest):
+async def write_blog(request: BlogGenerationRequest, api_key: str = Depends(verify_api_key)):
     """
     Generate a blog article using the 12-stage pipeline (SYNCHRONOUS).
     
@@ -976,7 +1022,7 @@ async def _create_google_doc_for_article(title: str, html_content: str, folder_i
 
 
 @app.post("/write-async")
-async def write_blog_async(request: AsyncBlogRequest):
+async def write_blog_async(request: AsyncBlogRequest, api_key: str = Depends(verify_api_key)):
     """
     Generate a blog article asynchronously with fire-and-forget architecture.
     
@@ -1304,7 +1350,7 @@ class ImageGenerationResponseModel(BaseModel):
 
 
 @app.post("/generate-image", response_model=ImageGenerationResponseModel)
-async def generate_image(request: ImageGenerationRequestModel):
+async def generate_image(request: ImageGenerationRequestModel, api_key: str = Depends(verify_api_key)):
     """
     Generate an AI image for a blog article using Google GenAI SDK (gemini-3-pro-image-preview).
     
@@ -1389,7 +1435,7 @@ class GraphicsGenerationResponseModel(BaseModel):
 
 
 @app.post("/generate-graphics", response_model=GraphicsGenerationResponseModel)
-async def generate_graphics(request: GraphicsGenerationRequestModel):
+async def generate_graphics(request: GraphicsGenerationRequestModel, api_key: str = Depends(verify_api_key)):
     """
     Generate HTML-based graphics (openfigma style) and convert to PNG.
     
@@ -1445,7 +1491,7 @@ class GraphicsConfigRequestModel(BaseModel):
 
 
 @app.post("/generate-graphics-config", response_model=GraphicsGenerationResponseModel)
-async def generate_graphics_from_config(request: GraphicsConfigRequestModel):
+async def generate_graphics_from_config(request: GraphicsConfigRequestModel, api_key: str = Depends(verify_api_key)):
     """
     Generate graphics from JSON config (new component-based API).
     
@@ -1538,7 +1584,7 @@ class TranslateResponseModel(BaseModel):
 
 
 @app.post("/translate", response_model=TranslateResponseModel)
-async def translate_blog(request: TranslateRequestModel):
+async def translate_blog(request: TranslateRequestModel, api_key: str = Depends(verify_api_key)):
     """
     Translate a blog article to another language/market with intelligent market adaptation.
     
@@ -1850,7 +1896,7 @@ class ContentRefreshResponse(BaseModel):
 
 @app.post("/refresh", response_model=ContentRefreshResponse)
 @limiter.limit("10/minute")
-async def refresh_content(refresh_request: ContentRefreshRequest, request: Request):
+async def refresh_content(refresh_request: ContentRefreshRequest, request: Request, api_key: str = Depends(verify_api_key)):
     """
     Refresh/correct existing content using prompts with structured JSON output (v2.0).
     

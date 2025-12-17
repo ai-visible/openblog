@@ -78,10 +78,46 @@ https://openblog-production.up.railway.app/openapi.json
 
 ## 🔐 Authentication
 
-Currently, the API doesn't require authentication, but you may want to add:
-- API keys
-- Bearer tokens
-- Rate limiting (already configured: 10 requests/minute)
+**⚠️ IMPORTANT: API Keys Required**
+
+All endpoints (except `/health` and `/debug/env`) require authentication via API key.
+
+### Setting Up API Keys
+
+1. **Generate Keys**:
+   ```bash
+   python3 generate_api_key.py
+   ```
+
+2. **Set Environment Variable**:
+   ```bash
+   export OPENBLOG_API_KEYS="ob_prod_7Zq3Am6qgCXPuFFppDswxRyTQwHBBnp6,ob_staging_biqTvDNCYoRgAUViyuibojKVKyntE9Zk"
+   ```
+
+3. **Deploy with Keys** (Railway/Vercel):
+   - Add `OPENBLOG_API_KEYS` to environment variables
+   - Comma-separated for multiple keys
+
+### Using API Keys
+
+**Method 1: Authorization Header (Recommended)**
+```bash
+curl -H "Authorization: Bearer ob_prod_7Zq3Am6qgCXPuFFppDswxRyTQwHBBnp6" \
+     https://openblog-production.up.railway.app/write
+```
+
+**Method 2: X-API-Key Header**
+```bash
+curl -H "X-API-Key: ob_prod_7Zq3Am6qgCXPuFFppDswxRyTQwHBBnp6" \
+     https://openblog-production.up.railway.app/write
+```
+
+### Security Features
+- ✅ Cryptographically secure keys (256-bit entropy)
+- ✅ Multiple keys supported (prod/staging/dev)
+- ✅ Rate limiting (10 requests/minute) 
+- ✅ CORS protection
+- ✅ Backward compatibility (if no keys set, API stays open)
 
 ---
 
@@ -90,11 +126,14 @@ Currently, the API doesn't require authentication, but you may want to add:
 ```bash
 curl -X POST "https://openblog-production.up.railway.app/write" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY_HERE" \
   -d '{
     "primary_keyword": "AI automation",
     "company_url": "https://example.com"
   }'
 ```
+
+**⚠️ Replace `YOUR_API_KEY_HERE` with your actual API key**
 
 ---
 

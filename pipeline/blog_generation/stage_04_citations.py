@@ -564,6 +564,9 @@ Return a JSON object with a "citations" array. Each citation must have:
             # Resolve any proxy URLs (vertexaisearch.cloud.google.com redirects)
             citation_list = self._resolve_proxy_urls(citation_list)
             
+            # Extract metadata (meta titles and descriptions) for all citations
+            citation_list = await self._extract_metadata_for_citations(citation_list)
+            
             logger.info(f"✅ Extracted {len(citation_list.citations)} citations (AI-only)")
             
         except Exception as e:
@@ -571,6 +574,100 @@ Return a JSON object with a "citations" array. Each citation must have:
             logger.warning("   Returning empty citation list")
             return citation_list
         
+        return citation_list
+    
+    async def _extract_metadata_for_citations(self, citation_list: CitationList) -> CitationList:
+        """
+        Extract meta titles and descriptions for all citations using parallel HTTP requests.
+        
+        This enhances citations with proper source metadata so they appear as
+        "IBM Cost of a Data Breach Report 2024" instead of just "ibm.com" in exports.
+        
+        Args:
+            citation_list: CitationList with extracted citations
+            
+        Returns:
+            CitationList with enhanced metadata (meta_description field populated)
+        """
+        if not citation_list.citations:
+            return citation_list
+            
+        logger.info(f"📝 Extracting metadata for {len(citation_list.citations)} citations...")
+        
+        import asyncio
+        import aiohttp
+        from bs4 import BeautifulSoup
+        
+        async def fetch_metadata(session: aiohttp.ClientSession, citation: Citation):
+            """Fetch metadata for a single citation."""
+            try:
+                async with session.get(
+                    citation.url, 
+                    timeout=aiohttp.ClientTimeout(total=8),
+                    headers={'User-Agent': 'Mozilla/5.0 (compatible; OpenBlog/1.0)'}
+                ) as response:
+                    if response.status != 200:
+                        logger.warning(f"   ⚠️  Citation [{citation.number}] HTTP {response.status}: {citation.url}")
+                        return citation
+                    
+                    html = await response.text()
+                    soup = BeautifulSoup(html, 'html.parser')
+                    
+                    # Extract meta title (prefer og:title, then <title>, then current title)
+                    meta_title = None
+                    og_title = soup.find('meta', attrs={'property': 'og:title'})
+                    if og_title and og_title.get('content'):
+                        meta_title = og_title['content'].strip()
+                    
+                    if not meta_title:
+                        title_tag = soup.find('title')
+                        if title_tag and title_tag.text:
+                            meta_title = title_tag.text.strip()
+                    
+                    # Extract meta description (prefer og:description, then meta description)
+                    meta_description = None
+                    og_desc = soup.find('meta', attrs={'property': 'og:description'})
+                    if og_desc and og_desc.get('content'):
+                        meta_description = og_desc['content'].strip()
+                    
+                    if not meta_description:
+                        desc_tag = soup.find('meta', attrs={'name': 'description'})
+                        if desc_tag and desc_tag.get('content'):
+                            meta_description = desc_tag['content'].strip()
+                    
+                    # Update citation with metadata
+                    if meta_title and len(meta_title) > 10:  # Only use if substantial
+                        citation.title = meta_title[:150]  # Limit length
+                        logger.debug(f"   📝 Citation [{citation.number}] title updated: {citation.title[:50]}...")
+                    
+                    if meta_description and len(meta_description) > 20:
+                        citation.meta_description = meta_description[:300]  # Limit length
+                        logger.debug(f"   📝 Citation [{citation.number}] description: {citation.meta_description[:50]}...")
+                    
+                    return citation
+                    
+            except asyncio.TimeoutError:
+                logger.warning(f"   ⚠️  Citation [{citation.number}] timeout: {citation.url}")
+            except Exception as e:
+                logger.warning(f"   ⚠️  Citation [{citation.number}] metadata error: {e}")
+            
+            return citation
+        
+        # Process all citations in parallel
+        async with aiohttp.ClientSession() as session:
+            tasks = [fetch_metadata(session, citation) for citation in citation_list.citations]
+            updated_citations = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Update citation list with results
+        enhanced_count = 0
+        for i, result in enumerate(updated_citations):
+            if isinstance(result, Citation):
+                citation_list.citations[i] = result
+                if result.meta_description:
+                    enhanced_count += 1
+            # If exception, keep original citation
+        
+        logger.info(f"✅ Enhanced {enhanced_count}/{len(citation_list.citations)} citations with metadata")
         return citation_list
     
     def _resolve_proxy_urls(self, citation_list: CitationList) -> CitationList:
