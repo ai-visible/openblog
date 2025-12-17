@@ -26,9 +26,18 @@ env/
 ENV/
 .venv
 
-# Environment variables
+# Environment variables and secrets
 .env
 .env.local
+.env.production
+.env.development
+.env.staging
+.env.*.local
+**/secrets.txt
+**/api-keys.txt
+**/credentials.txt
+**/.secrets
+**/.credentials
 
 # IDE
 .vscode/
@@ -69,6 +78,9 @@ trace_*/
 # Credentials and secrets
 *.json
 !railway.json
+!package.json
+!package-lock.json
+!tsconfig.json
 *-credentials.json
 *-key.json
 *-service-account.json
@@ -76,6 +88,12 @@ trace_*/
 gen-lang-client-*.json
 **/credentials/**
 **/secrets/**
+
+# Scripts that might contain hardcoded secrets  
+**/deploy-with-secrets.sh
+**/set-api-keys.sh
+**/*-deploy-secrets.*
+**/*-with-keys.*
 
 # Database files
 *.db
