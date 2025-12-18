@@ -257,11 +257,22 @@ class ArticleOutput(BaseModel):
     @field_validator("Meta_Title")
     @classmethod
     def meta_title_length(cls, v):
-        """Validate and auto-truncate Meta Title to SEO limits."""
-        if len(v) > 60:
-            logger.warning(f"Meta Title exceeds 60 chars: {len(v)} chars, truncating...")
-            # Truncate to 60 chars (57 chars + "...")
-            return v[:57] + "..." if len(v) > 60 else v
+        """Validate and intelligently truncate Meta Title to SEO limits (55 chars)."""
+        if len(v) > 55:
+            logger.warning(f"Meta Title exceeds 55 chars: {len(v)} chars, applying smart truncation...")
+            # Smart truncation: try to break at word boundaries
+            if len(v) <= 55:
+                return v
+            
+            # Find the last complete word that fits in 52 chars (leaving room for "...")
+            truncated = v[:52]
+            last_space = truncated.rfind(' ')
+            
+            if last_space > 35:  # Only use word boundary if it doesn't make title too short
+                truncated = v[:last_space]
+            
+            # Only add "..." if we actually truncated
+            return truncated + "..." if len(truncated) < len(v) else v
         return v
 
     @field_validator("Meta_Description")

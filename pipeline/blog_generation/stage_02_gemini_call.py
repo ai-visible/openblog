@@ -137,6 +137,13 @@ Example - WRONG vs CORRECT:
 ❌ WRONG: **What are** the most common structures...
 ✅ CORRECT: <strong>What are</strong> the most common structures...
 
+🚨 CRITICAL: META TITLE LENGTH ENFORCEMENT 🚨
+- Meta_Title MUST be exactly 50-55 characters maximum
+- Any title longer than 55 chars will be automatically truncated with "..."  
+- Count characters carefully - include spaces and punctuation
+- Test: "AI Tools Guide 2024 | Complete Review" = 41 chars ✅
+- Bad: "Complete Guide to AI Tools and Software Solutions 2024" = 58 chars ❌ (will become "Complete Guide to AI Tools and Software Solutions...")
+
 """
         system_instruction = markdown_prevention + system_instruction
         
@@ -367,7 +374,7 @@ REQUIRED JSON STRUCTURE:
   "Teaser": "2-3 sentence hook highlighting pain point or benefit (80-120 words)",
   "Direct_Answer": "40-60 word direct answer to primary question",
   "Intro": "<p>Opening paragraph (80-120 words) framing the problem. <a href=\"https://www.ibm.com/reports/data-breach\" class=\"citation\">According to IBM research</a>, include citations inline.</p>",
-  "Meta_Title": "≤55 character SEO title with primary keyword",
+  "Meta_Title": "SEO title with primary keyword (CRITICAL: max 55 chars to avoid truncation)",
   "Meta_Description": "≤130 character SEO description with CTA",
   "Lead_Survey_Title": "",
   "Lead_Survey_Button": "",
@@ -930,8 +937,8 @@ EXAMPLE OF CORRECT FORMATTING:
         
         # Validate Meta_Title length
         meta_title = json_data.get("Meta_Title", "")
-        if len(meta_title) > 60:
-            logger.warning(f"⚠️ Meta_Title too long ({len(meta_title)} chars): {meta_title[:60]}...")
+        if len(meta_title) > 55:
+            logger.warning(f"⚠️ Meta_Title too long ({len(meta_title)} chars): {meta_title[:55]}...")
         
         # Validate Meta_Description length
         meta_description = json_data.get("Meta_Description", "")

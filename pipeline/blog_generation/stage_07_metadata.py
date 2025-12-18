@@ -141,6 +141,21 @@ class MetadataStage(Stage):
                 word_count += section_words
 
         logger.debug(f"Total word count: {word_count}")
+
+        # Word count validation (surgical fix for read time issue)
+        if word_count > 4000:
+            logger.warning(f"⚠️ High word count detected: {word_count} words - check for inflation")
+        elif word_count < 500:
+            logger.warning(f"⚠️ Low word count detected: {word_count} words - check for missing content")
+
+        # Calculate read time with validation
+        read_time = MetadataCalculator.calculate_read_time(word_count)
+        expected_range_min = max(1, round(word_count / 250))  # Slow reading
+        expected_range_max = max(1, round(word_count / 150))  # Fast reading
+        
+        if read_time < expected_range_min or read_time > expected_range_max:
+            logger.warning(f"⚠️ Read time {read_time}m outside expected range {expected_range_min}-{expected_range_max}m for {word_count} words")
+
         return word_count
 
     def __repr__(self) -> str:
