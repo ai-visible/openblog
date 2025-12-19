@@ -23,7 +23,7 @@ The citations from Gemini come in format:
 """
 
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 from ..core import ExecutionContext, Stage
 from ..models.citation import Citation, CitationList
@@ -714,7 +714,7 @@ Return a JSON object with a "citations" array. Each citation must have:
         import requests
         from concurrent.futures import ThreadPoolExecutor
         
-        def check_single_url_sync(citation: Citation) -> tuple[int, str]:
+        def check_single_url_sync(citation: Citation) -> Tuple[int, str]:
             """Check a single URL synchronously and return (number, status)."""
             try:
                 response = requests.head(
@@ -933,7 +933,7 @@ Only mark as security risk if you're confident it's spam/malicious. Legitimate s
         citation_list: CitationList,
         issues_list: List[Citation],
         context: ExecutionContext
-    ) -> tuple[CitationList, List[int]]:
+    ) -> Tuple[CitationList, List[int]]:
         """
         Find replacement URLs for broken/security-risk citations (1 retry max).
         
@@ -1149,7 +1149,7 @@ Search for: {citation.title}
         
         import asyncio
         
-        async def update_field(field_name: str) -> tuple[str, str]:
+        async def update_field(field_name: str) -> Tuple[str, str]:
             """Update a single field's citations."""
             content = article_dict.get(field_name, '')
             if not content or not isinstance(content, str):
