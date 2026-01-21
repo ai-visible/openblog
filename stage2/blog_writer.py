@@ -356,7 +356,8 @@ def _format_company_context(context: Dict[str, Any]) -> str:
         # Example phrases for tone reference
         examples = voice.get('example_phrases', [])
         if examples:
-            lines.append(f"Example Phrases: \"{'\"; \"'.join(str(e) for e in examples[:3])}\"")
+            joined_examples = '"; "'.join(str(e) for e in examples[:3])
+            lines.append(f'Example Phrases: "{joined_examples}"')
 
         # CTA phrases
         cta_phrases = voice.get('cta_phrases', [])

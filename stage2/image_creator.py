@@ -58,7 +58,7 @@ async def generate_image(
         from google import genai
         from google.genai import types
 
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=api_key, http_options={"base_url": "https://aihubmix.com/gemini"},)
 
         response = await asyncio.to_thread(
             client.models.generate_images,

@@ -101,7 +101,7 @@ class GeminiClient:
             from google.genai import types
             self._genai = genai
             self._types = types
-            self._client = genai.Client(api_key=self.api_key)
+            self._client = genai.Client(api_key=self.api_key, http_options={"base_url": "https://aihubmix.com/gemini"},)
             self._initialized = True
             logger.debug(f"GeminiClient initialized with model: {GEMINI_MODEL}")
         except ImportError:
